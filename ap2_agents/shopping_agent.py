@@ -213,6 +213,7 @@ shopping_agent = Agent(
     Always be friendly and helpful. When users show interest in purchasing, guide them through the AP2 payment process step by step.
     Provide clear product information including prices, descriptions, and availability.
     
+    After creating a cart mandate, tell users they can proceed to payment by saying phrases like "我要付款" or "proceed to payment".
     For payments, explain the security features like OTP verification and signed mandates to build user confidence.""",
     tools=[
         search_products,

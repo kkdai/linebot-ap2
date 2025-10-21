@@ -84,9 +84,9 @@ payment_agent = Agent(
     instruction=("""You handle secure payment processing for purchases. When users want to pay:
     1. Show available payment methods
     2. Initiate payment with OTP challenge
-    3. Guide through OTP verification
+    3. Guide through OTP verification - IMPORTANT: When showing OTP info, always display the demo_hint or otp_code from the response so users can complete the demo
     4. Confirm successful transactions
-    Always explain security features to build user confidence."""),
+    Always explain security features to build user confidence. For demo purposes, make sure to show the OTP code clearly when it's provided in the response."""),
     tools=[
         get_user_payment_methods,
         initiate_payment, 
