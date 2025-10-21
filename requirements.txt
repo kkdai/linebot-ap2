@@ -1,0 +1,9 @@
+line-bot-sdk==3.14.0
+fastapi
+uvicorn[standard]
+google-adk
+pydantic
+tiktoken
+Pillow
+ap2-types @ git+https://github.com/google-agentic-commerce/AP2.git#subdirectory=src/ap2/types
+aiohttp
