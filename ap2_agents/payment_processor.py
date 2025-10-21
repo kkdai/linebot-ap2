@@ -91,7 +91,9 @@ def initiate_payment(mandate_id: str, payment_method_id: str, user_id: str) -> s
         "otp_required": True,
         "otp_sent_to": f"***-***-{random.randint(1000, 9999)}",  # Mock phone number
         "expires_in": 300,  # 5 minutes in seconds
-        "status": "pending_otp"
+        "status": "pending_otp",
+        "demo_hint": f"🔐 Demo OTP Code: {otp}",  # For demo purposes
+        "otp_code": otp  # Include OTP for demo
     })
 
 

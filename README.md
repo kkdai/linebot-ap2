@@ -184,41 +184,46 @@ docker run -p 8080:8080 \
 
 6. 在 LINE Developer Console 中設定服務 URL 作為 LINE Bot webhook URL。
 
-#### Setting Up Secrets in Google Cloud (Recommended)
+#### 使用 Google Cloud Secret Manager (建議)
 
-For better security, store your API keys as secrets:
+為了更好的安全性，將 API 金鑰儲存為機密：
 
-1. Create secrets for your sensitive values:
-
-   ```
+1. 為敏感資料建立機密：
+   ```bash
    echo -n "YOUR_SECRET" | gcloud secrets create line-channel-secret --data-file=-
    echo -n "YOUR_TOKEN" | gcloud secrets create line-channel-token --data-file=-
    echo -n "YOUR_GEMINI_KEY" | gcloud secrets create gemini-api-key --data-file=-
    ```
 
-2. Give the Cloud Run service access to these secrets:
-
-   ```
+2. 授予 Cloud Run 服務存取這些機密的權限：
+   ```bash
    gcloud secrets add-iam-policy-binding line-channel-secret --member=serviceAccount:YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
    gcloud secrets add-iam-policy-binding line-channel-token --member=serviceAccount:YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
    gcloud secrets add-iam-policy-binding gemini-api-key --member=serviceAccount:YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
    ```
 
-3. Deploy with secrets:
-
-   ```
-   gcloud run deploy linebot-adk \
-     --image gcr.io/YOUR_PROJECT_ID/linebot-adk \
+3. 使用機密部署：
+   ```bash
+   gcloud run deploy linebot-ap2 \
+     --image gcr.io/YOUR_PROJECT_ID/linebot-ap2 \
      --platform managed \
      --region asia-east1 \
      --allow-unauthenticated \
-     --update-secrets=ChannelSecret=line-channel-secret:latest,ChannelAccessToken=line-channel-token:latest,GEMINI_API_KEY=gemini-api-key:latest
+     --update-secrets=ChannelSecret=line-channel-secret:latest,ChannelAccessToken=line-channel-token:latest,GOOGLE_API_KEY=gemini-api-key:latest
    ```
 
-## Maintenance and Monitoring
+## 維護與監控
 
-After deployment, you can monitor your service through the Google Cloud Console:
+部署後，您可以透過 Google Cloud Console 監控服務：
 
-1. View logs: `gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=linebot-adk"`
-2. Check service metrics: Access the Cloud Run dashboard in Google Cloud Console
-3. Set up alerts for error rates or high latency in Cloud Monitoring
+1. 查看日誌：`gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=linebot-ap2"`
+2. 檢查服務指標：進入 Google Cloud Console 的 Cloud Run 儀表板
+3. 在 Cloud Monitoring 中設定錯誤率或高延遲的警報
+
+## 貢獻
+
+歡迎提交 Issue 和 Pull Request 來改善這個專案。
+
+## 授權
+
+此專案採用 MIT 授權條款。
