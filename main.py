@@ -70,7 +70,7 @@ parser = WebhookParser(channel_secret)
 # Initialize ADK agents
 weather_time_agent = Agent(
     name="weather_time_agent",
-    model="gemini-2.0-flash",
+    model="gemini-2.5-flash",
     description=("Agent to answer questions about the time and weather in a city."),
     instruction=("I can answer your questions about the time and weather in a city."),
     tools=[get_weather, get_current_time],
@@ -79,7 +79,7 @@ weather_time_agent = Agent(
 # Payment agent for AP2 functionality
 payment_agent = Agent(
     name="ap2_payment_agent", 
-    model="gemini-2.0-flash",
+    model="gemini-2.5-flash",
     description=("Agent to handle secure payment processing with OTP verification for AP2 protocol."),
     instruction=("""You handle secure payment processing for purchases. When users want to pay:
     1. Show available payment methods

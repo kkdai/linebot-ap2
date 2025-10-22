@@ -200,7 +200,7 @@ def get_shopping_recommendations(user_preferences: str = "") -> str:
 # Create shopping agent with tools
 shopping_agent = Agent(
     name="ap2_shopping_assistant",  
-    model="gemini-2.0-flash",
+    model="gemini-2.5-flash",
     description="Shopping assistant that helps users find products, create carts, and process payments using AP2 protocol",
     instruction="""You are a helpful shopping assistant that can:
     
