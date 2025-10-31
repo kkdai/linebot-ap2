@@ -1,20 +1,28 @@
-import os
-import sys
+"""
+Enhanced LINE Bot AP2 Application
+
+Modern FastAPI application with improved architecture, error handling, 
+and configuration management following AP2 best practices.
+"""
+
+import time
 import asyncio
-from io import BytesIO
+from contextlib import asynccontextmanager
+from typing import Dict, Any
 
 import aiohttp
-from fastapi import Request, FastAPI, HTTPException
-from zoneinfo import ZoneInfo
-
+from fastapi import FastAPI, Request, HTTPException
 from linebot.models import MessageEvent, TextSendMessage
 from linebot.exceptions import InvalidSignatureError
 from linebot.aiohttp_async_http_client import AiohttpAsyncHttpClient
 from linebot import AsyncLineBotApi, WebhookParser
-from multi_tool_agent.agent import (
-    get_weather,
-    get_current_time,
-)
+
+# Import new modularized components
+from src.linebot_ap2.config import get_settings, validate_environment
+from src.linebot_ap2.common import SessionManager, IntentDetector, setup_logger
+from src.linebot_ap2.common.logger import log_agent_interaction, log_error_with_context
+
+# Import legacy agent implementations (temporary)
 from ap2_agents.shopping_agent import shopping_agent
 from ap2_agents.payment_processor import (
     get_user_payment_methods,
@@ -23,295 +31,297 @@ from ap2_agents.payment_processor import (
     process_refund,
     get_transaction_status
 )
-from google.adk.agents import Agent
-import re
+from multi_tool_agent.agent import get_weather, get_current_time
 
-# Import necessary session components
-from google.adk.sessions import InMemorySessionService, Session
+from google.adk.agents import Agent
 from google.adk.runners import Runner
 from google.genai import types
 
-# OpenAI Agent configuration
-USE_VERTEX = os.getenv("GOOGLE_GENAI_USE_VERTEXAI") or "FALSE"
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or ""
 
-# LINE Bot configuration
-channel_secret = os.getenv("ChannelSecret", None)
-channel_access_token = os.getenv("ChannelAccessToken", None)
-
-# Validate environment variables
-if channel_secret is None:
-    print("Specify ChannelSecret as environment variable.")
-    sys.exit(1)
-if channel_access_token is None:
-    print("Specify ChannelAccessToken as environment variable.")
-    sys.exit(1)
-if USE_VERTEX == "True":  # Check if USE_VERTEX is true as a string
-    GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
-    GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION")
-    if not GOOGLE_CLOUD_PROJECT:
-        raise ValueError(
-            "Please set GOOGLE_CLOUD_PROJECT via env var or code when USE_VERTEX is true."
-        )
-    if not GOOGLE_CLOUD_LOCATION:
-        raise ValueError(
-            "Please set GOOGLE_CLOUD_LOCATION via env var or code when USE_VERTEX is true."
-        )
-elif not GOOGLE_API_KEY:
-    raise ValueError("Please set GOOGLE_API_KEY via env var or code.")
-
-# Initialize the FastAPI app for LINEBot
-app = FastAPI()
-session = aiohttp.ClientSession()
-async_http_client = AiohttpAsyncHttpClient(session)
-line_bot_api = AsyncLineBotApi(channel_access_token, async_http_client)
-parser = WebhookParser(channel_secret)
-
-# Initialize ADK agents
-weather_time_agent = Agent(
-    name="weather_time_agent",
-    model="gemini-2.5-flash",
-    description=("Agent to answer questions about the time and weather in a city."),
-    instruction=("I can answer your questions about the time and weather in a city."),
-    tools=[get_weather, get_current_time],
-)
-
-# Payment agent for AP2 functionality
-payment_agent = Agent(
-    name="ap2_payment_agent", 
-    model="gemini-2.5-flash",
-    description=("Agent to handle secure payment processing with OTP verification for AP2 protocol."),
-    instruction=("""You handle secure payment processing for purchases. When users want to pay:
-    1. Show available payment methods
-    2. Initiate payment with OTP challenge
-    3. Guide through OTP verification - IMPORTANT: When showing OTP info, always display the demo_hint or otp_code from the response so users can complete the demo
-    4. Confirm successful transactions
-    Always explain security features to build user confidence. For demo purposes, make sure to show the OTP code clearly when it's provided in the response."""),
-    tools=[
-        get_user_payment_methods,
-        initiate_payment, 
-        verify_otp,
-        process_refund,
-        get_transaction_status
-    ]
-)
-
-print(f"Agents created: '{weather_time_agent.name}', '{shopping_agent.name}', '{payment_agent.name}'")
-
-# --- Session Management ---
-# Key Concept: SessionService stores conversation history & state.
-# InMemorySessionService is simple, non-persistent storage for this tutorial.
-session_service = InMemorySessionService()
-
-# Define constants for identifying the interaction context
-APP_NAME = "linebot_adk_app"
-# Instead of fixed user_id and session_id, we'll now manage them dynamically
-
-# Dictionary to track active sessions
-active_sessions = {}
-
-# Create a function to get or create a session for a user
-
-
-async def get_or_create_session(user_id):  # Make function async
-    if user_id not in active_sessions:
-        # Create a new session for this user
-        session_id = f"session_{user_id}"
-        # Add await for the async session creation
-        await session_service.create_session(
-            app_name=APP_NAME, user_id=user_id, session_id=session_id
-        )
-        active_sessions[user_id] = session_id
-        print(
-            f"New session created: App='{APP_NAME}', User='{user_id}', Session='{session_id}'"
-        )
-    else:
-        # Use existing session
-        session_id = active_sessions[user_id]
-        print(
-            f"Using existing session: App='{APP_NAME}', User='{user_id}', Session='{session_id}'"
-        )
-
-    return session_id
-
-
-# Key Concept: Runners orchestrate the agent execution loops.
-weather_runner = Runner(
-    agent=weather_time_agent,
-    app_name=APP_NAME,
-    session_service=session_service,
-)
-
-shopping_runner = Runner(
-    agent=shopping_agent,
-    app_name=APP_NAME, 
-    session_service=session_service,
-)
-
-payment_runner = Runner(
-    agent=payment_agent,
-    app_name=APP_NAME,
-    session_service=session_service,
-)
-
-print(f"Runners created for all agents")
-
-
-def determine_intent(message: str) -> str:
-    """
-    Determine user intent from message content
+class LineBot:
+    """Enhanced LINE Bot with improved architecture."""
     
-    Args:
-        message: User's message text
+    def __init__(self):
+        # Load and validate configuration
+        self.settings = validate_environment()
+        self.logger = setup_logger(level=self.settings.log_level)
         
-    Returns:
-        Intent type: 'shopping', 'payment', or 'weather_time'
-    """
-    message_lower = message.lower()
+        # Initialize components
+        self.session_manager = SessionManager(self.settings.app_name)
+        self.intent_detector = IntentDetector()
+        
+        # Initialize LINE Bot components
+        self._init_line_bot()
+        
+        # Initialize agents
+        self._init_agents()
+        
+        self.logger.info("✓ LINE Bot AP2 application initialized successfully")
     
-    # Shopping keywords
-    shopping_keywords = [
-        'buy', 'purchase', 'shop', 'product', 'item', 'store',
-        '買', '購買', '商品', '產品', '店', '購物', '買東西',
-        'iphone', 'macbook', 'airpods', 'apple watch', 'phone', 'laptop'
-    ]
+    def _init_line_bot(self):
+        """Initialize LINE Bot API components."""
+        self.session = aiohttp.ClientSession()
+        self.async_http_client = AiohttpAsyncHttpClient(self.session)
+        self.line_bot_api = AsyncLineBotApi(
+            self.settings.line_channel_access_token, 
+            self.async_http_client
+        )
+        self.parser = WebhookParser(self.settings.line_channel_secret)
+        
+        self.logger.info("✓ LINE Bot API components initialized")
     
-    # Payment keywords  
-    payment_keywords = [
-        'pay', 'payment', 'card', 'checkout', 'otp', 'verify',
-        '付款', '支付', '付錢', '結帳', '驗證碼', '驗證',
-        'confirm purchase', 'complete order'
-    ]
-    
-    # Weather/time keywords
-    weather_time_keywords = [
-        'weather', 'time', 'temperature', 'forecast', 'rain', 'sunny',
-        '天氣', '時間', '溫度', '預報', '下雨', '晴天', '現在幾點'
-    ]
-    
-    # Check for payment intent first (highest priority for ongoing transactions)
-    for keyword in payment_keywords:
-        if keyword in message_lower:
-            return 'payment'
-    
-    # Check for shopping intent
-    for keyword in shopping_keywords:
-        if keyword in message_lower:
-            return 'shopping'
+    def _init_agents(self):
+        """Initialize ADK agents with enhanced configuration."""
+        # Weather/Time Agent
+        self.weather_time_agent = Agent(
+            name="weather_time_agent",
+            model=self.settings.default_model,
+            description="Agent to answer questions about the time and weather in a city.",
+            instruction="I can answer your questions about the time and weather in a city.",
+            tools=[get_weather, get_current_time],
+        )
+        
+        # Payment Agent (enhanced)
+        self.payment_agent = Agent(
+            name="ap2_payment_agent", 
+            model=self.settings.default_model,
+            description="Agent to handle secure payment processing with OTP verification for AP2 protocol.",
+            instruction=f"""You handle secure payment processing for purchases. When users want to pay:
+            1. Show available payment methods
+            2. Initiate payment with OTP challenge
+            3. Guide through OTP verification - IMPORTANT: When showing OTP info, always display the demo_hint or otp_code from the response
+            4. Confirm successful transactions
             
-    # Check for weather/time intent
-    for keyword in weather_time_keywords:
-        if keyword in message_lower:
-            return 'weather_time'
+            Security features:
+            - Maximum {self.settings.max_otp_attempts} OTP attempts
+            - OTP expires in {self.settings.otp_expiry_minutes} minutes
+            - Always explain security features to build user confidence
+            
+            For demo purposes, make sure to show the OTP code clearly when it's provided in the response.""",
+            tools=[
+                get_user_payment_methods,
+                initiate_payment, 
+                verify_otp,
+                process_refund,
+                get_transaction_status
+            ]
+        )
+        
+        # Initialize runners
+        self.weather_runner = Runner(
+            agent=self.weather_time_agent,
+            app_name=self.settings.app_name,
+            session_service=self.session_manager.session_service,
+        )
+        
+        self.shopping_runner = Runner(
+            agent=shopping_agent,
+            app_name=self.settings.app_name, 
+            session_service=self.session_manager.session_service,
+        )
+        
+        self.payment_runner = Runner(
+            agent=self.payment_agent,
+            app_name=self.settings.app_name,
+            session_service=self.session_manager.session_service,
+        )
+        
+        self.logger.info("✓ All agents and runners initialized")
     
-    # Default to shopping for unknown intents (since it's the main new feature)
-    return 'shopping'
+    async def process_message(self, event: MessageEvent) -> str:
+        """Process incoming message with enhanced error handling."""
+        start_time = time.time()
+        user_id = event.source.user_id
+        message = event.message.text
+        
+        try:
+            # Detect intent with enhanced detection
+            intent_result = self.intent_detector.detect_intent(message)
+            intent = intent_result["intent"].value
+            confidence = intent_result["confidence"]
+            
+            self.logger.info(
+                f"Intent detected: {intent} (confidence: {confidence:.2f}) for user: {user_id}"
+            )
+            
+            # Get or create session
+            session_id = await self.session_manager.get_or_create_session(user_id)
+            
+            # Route to appropriate agent
+            response = await self._call_agent(message, user_id, session_id, intent)
+            
+            # Log interaction
+            processing_time = time.time() - start_time
+            log_agent_interaction(
+                self.logger, user_id, intent, message, response, processing_time
+            )
+            
+            return response
+            
+        except Exception as e:
+            log_error_with_context(
+                self.logger, e, "message_processing", user_id
+            )
+            return "抱歉，處理您的訊息時發生錯誤。請稍後再試。"
+    
+    async def _call_agent(self, message: str, user_id: str, session_id: str, intent: str) -> str:
+        """Call appropriate agent based on intent."""
+        # Select runner based on intent
+        if intent == 'weather_time':
+            selected_runner = self.weather_runner
+            agent_name = "Weather/Time"
+        elif intent == 'payment':
+            selected_runner = self.payment_runner
+            agent_name = "Payment"
+        else:  # default to shopping
+            selected_runner = self.shopping_runner
+            agent_name = "Shopping"
+        
+        self.logger.debug(f"Using {agent_name} agent for user {user_id}")
+        
+        # Prepare message
+        content = types.Content(role="user", parts=[types.Part(text=message)])
+        
+        try:
+            # Execute agent
+            async for event in selected_runner.run_async(
+                user_id=user_id, session_id=session_id, new_message=content
+            ):
+                if event.is_final_response():
+                    if event.content and event.content.parts:
+                        return event.content.parts[0].text
+                    elif event.actions and event.actions.escalate:
+                        return f"Agent escalated: {event.error_message or 'No specific message.'}"
+                    
+        except ValueError as e:
+            if "Session not found" in str(e):
+                # Handle session error by recreating
+                self.logger.warning(f"Session error for user {user_id}, recreating...")
+                session_id = await self.session_manager.handle_session_error(user_id)
+                
+                # Retry with new session
+                async for event in selected_runner.run_async(
+                    user_id=user_id, session_id=session_id, new_message=content
+                ):
+                    if event.is_final_response():
+                        if event.content and event.content.parts:
+                            return event.content.parts[0].text
+                        elif event.actions and event.actions.escalate:
+                            return f"Agent escalated: {event.error_message or 'No specific message.'}"
+            else:
+                raise
+        
+        return "抱歉，無法處理您的請求。"
+    
+    async def cleanup(self):
+        """Cleanup resources."""
+        if hasattr(self, 'session'):
+            await self.session.close()
+        self.logger.info("✓ Application cleanup completed")
+
+
+# Global app instance
+bot_instance = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan management."""
+    global bot_instance
+    
+    # Startup
+    bot_instance = LineBot()
+    yield
+    
+    # Shutdown
+    if bot_instance:
+        await bot_instance.cleanup()
+
+
+# Create FastAPI app with lifespan management
+app = FastAPI(
+    title="LINE Bot AP2",
+    description="LINE Bot with Google AP2 integration",
+    version="0.1.0",
+    lifespan=lifespan
+)
 
 
 @app.post("/")
 async def handle_callback(request: Request):
-    signature = request.headers["X-Line-Signature"]
-
-    # get request body as text
+    """Handle LINE webhook callbacks."""
+    signature = request.headers.get("X-Line-Signature")
+    if not signature:
+        raise HTTPException(status_code=400, detail="Missing signature")
+    
+    # Get request body
     body = await request.body()
-    body = body.decode()
-
+    body_text = body.decode()
+    
     try:
-        events = parser.parse(body, signature)
+        events = bot_instance.parser.parse(body_text, signature)
     except InvalidSignatureError:
+        bot_instance.logger.error("Invalid signature received")
         raise HTTPException(status_code=400, detail="Invalid signature")
-
+    
+    # Process events
     for event in events:
         if not isinstance(event, MessageEvent):
             continue
-
+            
         if event.message.type == "text":
-            # Process text message
-            msg = event.message.text
-            user_id = event.source.user_id
-            print(f"Received message: {msg} from user: {user_id}")
-
-            # Determine user intent and route to appropriate agent
-            intent = determine_intent(msg)
-            response = await call_agent_async(msg, user_id, intent)
-            reply_msg = TextSendMessage(text=response)
-            await line_bot_api.reply_message(event.reply_token, reply_msg)
+            try:
+                response = await bot_instance.process_message(event)
+                reply_msg = TextSendMessage(text=response)
+                await bot_instance.line_bot_api.reply_message(
+                    event.reply_token, reply_msg
+                )
+            except Exception as e:
+                bot_instance.logger.error(f"Error processing message: {e}")
+                # Send error message to user
+                error_msg = TextSendMessage(text="抱歉，處理您的訊息時發生錯誤。")
+                await bot_instance.line_bot_api.reply_message(
+                    event.reply_token, error_msg
+                )
         elif event.message.type == "image":
-            return "OK"
-        else:
+            # Handle image messages (placeholder)
             continue
-
+    
     return "OK"
 
 
-async def call_agent_async(query: str, user_id: str, intent: str = 'shopping') -> str:
-    """Sends a query to the appropriate agent based on intent and returns the final response."""
-    print(f"\n>>> User Query: {query} (Intent: {intent})")
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {
+        "status": "healthy",
+        "active_sessions": bot_instance.session_manager.get_active_session_count() if bot_instance else 0,
+        "timestamp": time.time()
+    }
 
-    # Get or create a session for this user
-    session_id = await get_or_create_session(user_id)
 
-    # Select appropriate runner based on intent
-    if intent == 'weather_time':
-        selected_runner = weather_runner
-        print(f"Using weather/time agent")
-    elif intent == 'payment':
-        selected_runner = payment_runner
-        print(f"Using payment agent")
-    else:  # default to shopping
-        selected_runner = shopping_runner
-        print(f"Using shopping agent")
+@app.get("/metrics")
+async def get_metrics():
+    """Get application metrics."""
+    if not bot_instance:
+        return {"error": "Application not initialized"}
+    
+    return {
+        "active_sessions": bot_instance.session_manager.get_active_session_count(),
+        "active_users": bot_instance.session_manager.list_active_users(),
+        "app_name": bot_instance.settings.app_name,
+        "model": bot_instance.settings.default_model
+    }
 
-    # Prepare the user's message in ADK format
-    content = types.Content(role="user", parts=[types.Part(text=query)])
 
-    final_response_text = "Agent did not produce a final response."  # Default
-
-    try:
-        # Key Concept: run_async executes the agent logic and yields Events.
-        # We iterate through events to find the final answer.
-        async for event in selected_runner.run_async(
-            user_id=user_id, session_id=session_id, new_message=content
-        ):
-            # You can uncomment the line below to see *all* events during execution
-            # print(f"  [Event] Author: {event.author}, Type: {type(event).__name__}, Final: {event.is_final_response()}, Content: {event.content}")
-
-            # Key Concept: is_final_response() marks the concluding message for the turn.
-            if event.is_final_response():
-                if event.content and event.content.parts:
-                    # Assuming text response in the first part
-                    final_response_text = event.content.parts[0].text
-                elif (
-                    event.actions and event.actions.escalate
-                ):  # Handle potential errors/escalations
-                    final_response_text = f"Agent escalated: {event.error_message or 'No specific message.'}"
-                # Add more checks here if needed (e.g., specific error codes)
-                break  # Stop processing events once the final response is found
-    except ValueError as e:
-        # Handle errors, especially session not found
-        print(f"Error processing request: {str(e)}")
-        # Recreate session if it was lost
-        if "Session not found" in str(e):
-            active_sessions.pop(user_id, None)  # Remove the invalid session
-            session_id = await get_or_create_session(
-                user_id
-            )  # Create a new one # Add await
-            # Try again with the new session
-            try:
-                async for event in selected_runner.run_async(
-                    user_id=user_id, session_id=session_id, new_message=content
-                ):
-                    # Same event handling code as above
-                    if event.is_final_response():
-                        if event.content and event.content.parts:
-                            final_response_text = event.content.parts[0].text
-                        elif event.actions and event.actions.escalate:
-                            final_response_text = f"Agent escalated: {event.error_message or 'No specific message.'}"
-                        break
-            except Exception as e2:
-                final_response_text = f"Sorry, I encountered an error: {str(e2)}"
-        else:
-            final_response_text = f"Sorry, I encountered an error: {str(e)}"
-
-    print(f"<<< Agent Response: {final_response_text}")
-    return final_response_text
+if __name__ == "__main__":
+    import uvicorn
+    
+    settings = get_settings()
+    uvicorn.run(
+        "main_new:app",
+        host=settings.host,
+        port=settings.port,
+        reload=settings.debug,
+        log_level=settings.log_level.lower()
+    )
