@@ -9,7 +9,6 @@ class IntentType(Enum):
     """Available intent types."""
     SHOPPING = "shopping"
     PAYMENT = "payment"
-    WEATHER_TIME = "weather_time"
     UNKNOWN = "unknown"
 
 
@@ -43,18 +42,6 @@ class IntentDetector:
                 # Product names
                 'iphone', 'macbook', 'airpods', 'apple watch', 
                 'phone', 'laptop', 'computer', 'tablet'
-            ],
-            
-            IntentType.WEATHER_TIME: [
-                # English keywords
-                'weather', 'time', 'temperature', 'forecast', 'rain',
-                'sunny', 'cloudy', 'wind', 'humidity', 'climate',
-                'what time', 'current time', 'now',
-                
-                # Chinese keywords
-                '天氣', '時間', '溫度', '預報', '下雨', '晴天',
-                '多雲', '風', '濕度', '氣候', '幾點', '現在幾點',
-                '現在時間'
             ]
         }
         
@@ -74,13 +61,6 @@ class IntentDetector:
                 r'show.*product',
                 r'search.*for',
                 r'add.*cart',
-            ],
-            
-            IntentType.WEATHER_TIME: [
-                r'(今天|明天|現在).*(天氣|溫度)',
-                r'what.*time.*is.*it',
-                r'weather.*in.*\w+',
-                r'現在幾點',
             ]
         }
     

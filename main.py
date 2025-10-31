@@ -31,7 +31,6 @@ from ap2_agents.payment_processor import (
     process_refund,
     get_transaction_status
 )
-from multi_tool_agent.agent import get_weather, get_current_time
 
 from google.adk.agents import Agent
 from google.adk.runners import Runner
@@ -72,15 +71,6 @@ class LineBot:
     
     def _init_agents(self):
         """Initialize ADK agents with enhanced configuration."""
-        # Weather/Time Agent
-        self.weather_time_agent = Agent(
-            name="weather_time_agent",
-            model=self.settings.default_model,
-            description="Agent to answer questions about the time and weather in a city.",
-            instruction="I can answer your questions about the time and weather in a city.",
-            tools=[get_weather, get_current_time],
-        )
-        
         # Payment Agent (enhanced)
         self.payment_agent = Agent(
             name="ap2_payment_agent", 
@@ -108,12 +98,6 @@ class LineBot:
         )
         
         # Initialize runners
-        self.weather_runner = Runner(
-            agent=self.weather_time_agent,
-            app_name=self.settings.app_name,
-            session_service=self.session_manager.session_service,
-        )
-        
         self.shopping_runner = Runner(
             agent=shopping_agent,
             app_name=self.settings.app_name, 
@@ -167,10 +151,7 @@ class LineBot:
     async def _call_agent(self, message: str, user_id: str, session_id: str, intent: str) -> str:
         """Call appropriate agent based on intent."""
         # Select runner based on intent
-        if intent == 'weather_time':
-            selected_runner = self.weather_runner
-            agent_name = "Weather/Time"
-        elif intent == 'payment':
+        if intent == 'payment':
             selected_runner = self.payment_runner
             agent_name = "Payment"
         else:  # default to shopping
@@ -319,7 +300,7 @@ if __name__ == "__main__":
     
     settings = get_settings()
     uvicorn.run(
-        "main_new:app",
+        "main:app",
         host=settings.host,
         port=settings.port,
         reload=settings.debug,
