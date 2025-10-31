@@ -124,7 +124,6 @@ def demo_intent_detection():
         
         payment_keywords = ['pay', 'payment', 'otp', 'verify', '付款', '支付', '驗證']
         shopping_keywords = ['buy', 'shop', 'product', '買', '購物', 'iphone', 'macbook']
-        weather_keywords = ['weather', 'time', '天氣', '時間']
         
         for keyword in payment_keywords:
             if keyword in message_lower:
@@ -132,18 +131,13 @@ def demo_intent_detection():
         for keyword in shopping_keywords:
             if keyword in message_lower:
                 return 'shopping'
-        for keyword in weather_keywords:
-            if keyword in message_lower:
-                return 'weather_time'
         return 'shopping'
     
     test_messages = [
         "我想買 iPhone 15 Pro",
-        "今天台北天氣如何？",
         "我要付款",
         "Show me MacBook options",
         "Verify my OTP code",
-        "What time is it in New York?",
         "幫我結帳"
     ]
     

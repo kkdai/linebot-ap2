@@ -10,7 +10,6 @@ class AgentType(str, Enum):
     """Agent types."""
     SHOPPING = "shopping"
     PAYMENT = "payment"
-    WEATHER_TIME = "weather_time"
 
 
 class ResponseStatus(str, Enum):
