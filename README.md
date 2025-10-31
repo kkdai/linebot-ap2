@@ -11,21 +11,25 @@
 ## 核心功能
 
 ### 🛍️ 智能購物助手
+
 - **商品搜尋與推薦**: 根據關鍵字或類別搜尋商品，提供個人化推薦
 - **商品詳情查詢**: 查看商品價格、庫存、描述等詳細資訊
 - **購物車管理**: 創建購物車清單和訂單
 
 ### 💳 AP2 安全支付系統
+
 - **多種支付方式**: 支援信用卡等多種付款方式管理
 - **OTP 雙重驗證**: 提供 OTP 驗證碼確保交易安全
 - **交易追蹤**: 查詢交易狀態和歷史記錄
 - **退款處理**: 支援安全的退款機制
 
 ### 🌤️ 天氣與時間查詢
+
 - **即時天氣**: 查詢指定城市的天氣狀況
 - **時間資訊**: 獲取各地區的當前時間
 
 ### 🤖 智能意圖識別
+
 - **自動路由**: 根據用戶訊息內容自動判斷意圖並轉至對應代理
 - **多語言支援**: 支援繁體中文和英文關鍵字識別
 - **上下文對話**: 維持對話上下文，提供連貫的互動體驗
@@ -44,47 +48,57 @@
 ## 主要代理系統
 
 ### 購物代理 (Shopping Agent)
+
 - 處理商品搜尋和推薦
 - 管理購物車和訂單創建
 - 支援多種商品類別 (電子產品、電腦、音響、穿戴裝置)
 
 ### 支付代理 (Payment Agent)  
+
 - 整合 AP2 安全支付流程
 - OTP 驗證和交易確認
 - 支付方式管理和退款處理
 
 ### 天氣時間代理 (Weather Time Agent)
+
 - 提供天氣資訊查詢
 - 多時區時間查詢功能
 
 ## 環境設定
 
 ### 必要環境變數
+
 設定以下環境變數：
-- `ChannelSecret`: LINE 頻道密鑰
-- `ChannelAccessToken`: LINE 頻道存取權杖
+
+- `ChannelSecret`: LINE Channel Secret
+- `ChannelAccessToken`: LINE Channel Access Token
 - `GOOGLE_API_KEY`: Google Gemini API 金鑰
 - `GOOGLE_GENAI_USE_VERTEXAI`: 是否使用 Vertex AI (預設為 FALSE)
 
 ### Vertex AI 設定 (選用)
+
 如果設定 `GOOGLE_GENAI_USE_VERTEXAI=True`，需額外設定：
+
 - `GOOGLE_CLOUD_PROJECT`: Google Cloud 專案 ID
 - `GOOGLE_CLOUD_LOCATION`: Google Cloud 地區
 
 ### 安裝步驟
 
 1. 複製專案到本地端
+
    ```bash
    git clone <repository-url>
    cd linebot-ap2
    ```
 
 2. 安裝相依套件
+
    ```bash
    pip install -r requirements.txt
    ```
 
 3. 設定環境變數並啟動服務
+
    ```bash
    uvicorn main:app --host 0.0.0.0 --port 8080
    ```
@@ -96,21 +110,26 @@
 ### 💬 對話範例
 
 **購物相關:**
+
 - "我想買 iPhone" → 自動轉至購物代理
 - "推薦一些產品給我" → 提供商品推薦
 - "MacBook 有庫存嗎？" → 查詢商品詳情
 
 **支付相關:**
+
 - "我要付款" → 轉至支付代理
 - "確認購買" → 啟動 AP2 支付流程
 - "驗證碼是 123456" → OTP 驗證
 
 **天氣時間:**
+
 - "台北天氣如何？" → 查詢天氣資訊
 - "紐約現在幾點？" → 查詢當地時間
 
 ### 🔄 智能路由系統
+
 機器人會自動根據訊息內容判斷用戶意圖：
+
 - 偵測購物關鍵字 → 購物代理
 - 偵測支付關鍵字 → 支付代理  
 - 偵測天氣時間關鍵字 → 天氣時間代理
@@ -151,21 +170,25 @@ docker run -p 8080:8080 \
 #### 部署步驟
 
 1. 驗證 Google Cloud：
+
    ```bash
    gcloud auth login
    ```
 
 2. 設定 Google Cloud 專案：
+
    ```bash
    gcloud config set project YOUR_PROJECT_ID
    ```
 
 3. 建置並推送 Docker 映像至 Google Container Registry：
+
    ```bash
    gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/linebot-ap2
    ```
 
 4. 部署至 Cloud Run：
+
    ```bash
    gcloud run deploy linebot-ap2 \
      --image gcr.io/YOUR_PROJECT_ID/linebot-ap2 \
@@ -178,6 +201,7 @@ docker run -p 8080:8080 \
    注意：生產環境建議使用 Secret Manager 儲存敏感的環境變數。
 
 5. 取得服務 URL：
+
    ```bash
    gcloud run services describe linebot-ap2 --platform managed --region asia-east1 --format 'value(status.url)'
    ```
@@ -189,6 +213,7 @@ docker run -p 8080:8080 \
 為了更好的安全性，將 API 金鑰儲存為機密：
 
 1. 為敏感資料建立機密：
+
    ```bash
    echo -n "YOUR_SECRET" | gcloud secrets create line-channel-secret --data-file=-
    echo -n "YOUR_TOKEN" | gcloud secrets create line-channel-token --data-file=-
@@ -196,6 +221,7 @@ docker run -p 8080:8080 \
    ```
 
 2. 授予 Cloud Run 服務存取這些機密的權限：
+
    ```bash
    gcloud secrets add-iam-policy-binding line-channel-secret --member=serviceAccount:YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
    gcloud secrets add-iam-policy-binding line-channel-token --member=serviceAccount:YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
@@ -203,6 +229,7 @@ docker run -p 8080:8080 \
    ```
 
 3. 使用機密部署：
+
    ```bash
    gcloud run deploy linebot-ap2 \
      --image gcr.io/YOUR_PROJECT_ID/linebot-ap2 \
