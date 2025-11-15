@@ -1,7 +1,6 @@
 """Enhanced payment tools using the new service architecture."""
 
 import json
-import asyncio
 from typing import Optional
 
 from ..services.payment_service import PaymentService, PaymentError, OTPError
@@ -26,17 +25,9 @@ def enhanced_get_payment_methods(user_id: str) -> str:
     """
     try:
         _logger.info(f"Getting payment methods for user: {user_id}")
-        
-        # Run async function in sync context
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        try:
-            result = loop.run_until_complete(
-                _payment_service.get_user_payment_methods(user_id)
-            )
-        finally:
-            loop.close()
+
+        # Call synchronous service method
+        result = _payment_service.get_user_payment_methods(user_id)
         
         # Add security and compliance info
         result["security_features"] = {
@@ -105,21 +96,13 @@ def enhanced_initiate_payment(
         if amount is None:
             amount = mandate_details["mandate"]["total_amount"]
         
-        # Run async payment initiation
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        try:
-            result = loop.run_until_complete(
-                _payment_service.initiate_payment(
-                    mandate_id=mandate_id,
-                    payment_method_id=payment_method_id,
-                    user_id=user_id,
-                    amount=amount
-                )
-            )
-        finally:
-            loop.close()
+        # Call synchronous payment initiation
+        result = _payment_service.initiate_payment(
+            mandate_id=mandate_id,
+            payment_method_id=payment_method_id,
+            user_id=user_id,
+            amount=amount
+        )
         
         # Update mandate status
         _mandate_service.update_mandate_status(mandate_id, "pending_otp")
@@ -170,19 +153,12 @@ def enhanced_verify_otp(
         _logger.info(f"Verifying OTP: mandate={mandate_id}, user={user_id}")
         
         # Run async OTP verification
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        try:
-            result = loop.run_until_complete(
-                _payment_service.verify_otp(
-                    mandate_id=mandate_id,
-                    otp_code=otp_code,
-                    user_id=user_id
-                )
-            )
-        finally:
-            loop.close()
+        # Call synchronous OTP verification
+        result = _payment_service.verify_otp(
+            mandate_id=mandate_id,
+            otp_code=otp_code,
+            user_id=user_id
+        )
         
         # If successful, update mandate status and process fulfillment
         if result.get("status") == "completed":
@@ -239,15 +215,8 @@ def enhanced_get_transaction_status(transaction_id: str) -> str:
         _logger.info(f"Getting transaction status: {transaction_id}")
         
         # Run async status check
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        try:
-            result = loop.run_until_complete(
-                _payment_service.get_transaction_status(transaction_id)
-            )
-        finally:
-            loop.close()
+        # Call synchronous transaction status method
+        result = _payment_service.get_transaction_status(transaction_id)
         
         if "error" not in result:
             # Add additional context
@@ -294,19 +263,12 @@ def enhanced_process_refund(
         _logger.info(f"Processing refund: transaction={transaction_id}, amount={amount}")
         
         # Run async refund processing
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        try:
-            result = loop.run_until_complete(
-                _payment_service.process_refund(
-                    transaction_id=transaction_id,
-                    amount=amount,
-                    reason=reason
-                )
-            )
-        finally:
-            loop.close()
+        # Call synchronous refund processing
+        result = _payment_service.process_refund(
+            transaction_id=transaction_id,
+            amount=amount,
+            reason=reason
+        )
         
         # Add refund tracking and customer service info
         if "error" not in result:
@@ -381,15 +343,8 @@ def cleanup_expired_data() -> str:
     """
     try:
         # Run async cleanup
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        try:
-            expired_otps = loop.run_until_complete(
-                _payment_service.cleanup_expired_otps()
-            )
-        finally:
-            loop.close()
+        # Call synchronous cleanup methods
+        expired_otps = _payment_service.cleanup_expired_otps()
         
         expired_mandates = _mandate_service.cleanup_expired_mandates()
         
