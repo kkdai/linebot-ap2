@@ -4,12 +4,13 @@ import json
 import uuid
 import hashlib
 import hmac
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 
 from ..models.payment import CartMandate, CartItem, PaymentStatus
 from ..models.product import Product
+from ..common.logger import setup_logger
 
 
 @dataclass
@@ -24,11 +25,12 @@ class MandateSignature:
 
 class MandateService:
     """Enhanced mandate service following AP2 standards."""
-    
+
     def __init__(self, secret_key: str = "demo_secret_key"):
         self.secret_key = secret_key
         self.active_mandates: Dict[str, CartMandate] = {}
         self.mandate_signatures: Dict[str, MandateSignature] = {}
+        self.logger = setup_logger("mandate_service")
     
     def create_cart_mandate(
         self,
@@ -38,13 +40,13 @@ class MandateService:
         expires_in_minutes: int = 30
     ) -> CartMandate:
         """Create a new cart mandate with AP2 compliance."""
-        
+
         mandate_id = f"mandate_{uuid.uuid4().hex[:12]}"
-        
+
         # Convert items to CartItem objects
         cart_items = []
         total_amount = 0.0
-        
+
         for item_data in items:
             cart_item = CartItem(
                 product_id=item_data["product_id"],
@@ -55,7 +57,18 @@ class MandateService:
             )
             cart_items.append(cart_item)
             total_amount += cart_item.subtotal
-        
+
+        # Get current time
+        now = datetime.now()
+        expires_at = now + timedelta(minutes=expires_in_minutes)
+
+        self.logger.info(
+            f"Creating mandate {mandate_id}: "
+            f"user={user_id}, items={len(cart_items)}, total=${total_amount:.2f}, "
+            f"created_at={now.isoformat()}, expires_at={expires_at.isoformat()}, "
+            f"expires_in_minutes={expires_in_minutes}"
+        )
+
         # Create mandate
         mandate = CartMandate(
             mandate_id=mandate_id,
@@ -63,19 +76,23 @@ class MandateService:
             items=cart_items,
             total_amount=total_amount,
             currency=currency,
-            created_at=datetime.now(),
-            expires_at=datetime.now() + timedelta(minutes=expires_in_minutes),
+            created_at=now,
+            expires_at=expires_at,
             status=PaymentStatus.PENDING
         )
-        
+
         # Store mandate
         self.active_mandates[mandate_id] = mandate
-        
+
+        self.logger.info(f"✓ Mandate {mandate_id} created and stored successfully")
+
         return mandate
     
     def sign_mandate(self, mandate: CartMandate) -> MandateSignature:
         """Create AP2-compliant mandate signature."""
-        
+
+        self.logger.info(f"Signing mandate: {mandate.mandate_id}")
+
         # Create signature payload
         nonce = uuid.uuid4().hex[:16]
         timestamp = datetime.now().isoformat()
@@ -109,7 +126,11 @@ class MandateService:
         
         # Store signature
         self.mandate_signatures[mandate.mandate_id] = mandate_signature
-        
+
+        self.logger.info(
+            f"✓ Mandate {mandate.mandate_id} signed successfully with {mandate_signature.algorithm}"
+        )
+
         return mandate_signature
     
     def verify_mandate_signature(
@@ -143,18 +164,50 @@ class MandateService:
     
     def is_mandate_valid(self, mandate_id: str) -> bool:
         """Check if mandate is valid and not expired."""
-        
+
+        self.logger.debug(f"Validating mandate: {mandate_id}")
+
         mandate = self.get_mandate(mandate_id)
         if not mandate:
+            self.logger.warning(f"❌ Mandate {mandate_id} not found")
             return False
-        
+
+        # Log current time and expiration
+        now = datetime.now()
+        self.logger.info(
+            f"Mandate {mandate_id} validation check: "
+            f"current_time={now.isoformat()}, "
+            f"expires_at={mandate.expires_at.isoformat() if mandate.expires_at else 'None'}, "
+            f"status={mandate.status.value}"
+        )
+
         # Check expiration
         if mandate.is_expired():
+            time_diff = (now - mandate.expires_at).total_seconds() if mandate.expires_at else 0
+            self.logger.warning(
+                f"❌ Mandate {mandate_id} is EXPIRED! "
+                f"Expired {time_diff:.2f} seconds ago. "
+                f"expires_at={mandate.expires_at.isoformat() if mandate.expires_at else 'None'}"
+            )
             self.update_mandate_status(mandate_id, PaymentStatus.EXPIRED)
             return False
-        
+
+        # Calculate remaining time
+        if mandate.expires_at:
+            remaining_seconds = (mandate.expires_at - now).total_seconds()
+            self.logger.info(
+                f"✓ Mandate {mandate_id} is valid. "
+                f"Remaining time: {remaining_seconds:.2f} seconds ({remaining_seconds/60:.2f} minutes)"
+            )
+
         # Check status
-        return mandate.status in [PaymentStatus.PENDING, PaymentStatus.PENDING_OTP]
+        is_valid = mandate.status in [PaymentStatus.PENDING, PaymentStatus.PENDING_OTP]
+        if is_valid:
+            self.logger.info(f"✓ Mandate {mandate_id} status is valid: {mandate.status.value}")
+        else:
+            self.logger.warning(f"❌ Mandate {mandate_id} status is invalid: {mandate.status.value}")
+
+        return is_valid
     
     def get_mandate_details(self, mandate_id: str) -> Dict[str, Any]:
         """Get detailed mandate information for AP2 protocol."""
