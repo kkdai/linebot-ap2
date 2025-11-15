@@ -17,8 +17,8 @@ _logger = setup_logger("shopping_tools")
 def enhanced_search_products(
     query: str = "",
     category: str = "",
-    min_price: float = None,
-    max_price: float = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
     brand: str = "",
     in_stock_only: bool = True
 ) -> str:
