@@ -3,13 +3,14 @@
 import json
 from typing import Optional
 
-from ..services.payment_service import PaymentService, PaymentError, OTPError
-from ..services.mandate_service import MandateService
+from ..services import get_payment_service, get_mandate_service, get_product_service
+from ..services.payment_service import PaymentError, OTPError
 from ..common.logger import setup_logger
 
-# Initialize services
-_payment_service = PaymentService()
-_mandate_service = MandateService()
+# Use shared service instances to ensure data consistency across agents
+_payment_service = get_payment_service()
+_mandate_service = get_mandate_service()
+_product_service = get_product_service()
 _logger = setup_logger("payment_tools")
 
 
@@ -88,16 +89,45 @@ def enhanced_initiate_payment(
         if not is_valid:
             _logger.error(f"❌ Mandate validation failed for {mandate_id}")
             mandate_info = _mandate_service.get_mandate(mandate_id)
-            if mandate_info:
+
+            # Check if mandate exists at all
+            if not mandate_info:
+                # Get user's actual mandates for debugging
+                user_mandates = _mandate_service.get_user_mandates(user_id)
                 _logger.error(
-                    f"Mandate info: status={mandate_info.status.value}, "
-                    f"expires_at={mandate_info.expires_at.isoformat() if mandate_info.expires_at else 'None'}"
+                    f"Mandate {mandate_id} not found. User {user_id} has {len(user_mandates)} active mandate(s)"
                 )
+
+                return json.dumps({
+                    "error": "mandate_not_found",
+                    "message": (
+                        f"訂單號 {mandate_id} 不存在於系統中。\n\n"
+                        "這可能是因為：\n"
+                        "1. 訂單號輸入錯誤\n"
+                        "2. 訂單從未被創建（請先使用購物代理創建訂單）\n"
+                        "3. 訂單已過期並被清理\n\n"
+                        f"您目前有 {len(user_mandates)} 個有效訂單。"
+                        + ("\n請使用 get_user_mandates 工具查看您的有效訂單列表。" if user_mandates else "")
+                    ),
+                    "mandate_id": mandate_id,
+                    "user_id": user_id,
+                    "user_active_mandates_count": len(user_mandates),
+                    "status": "failed",
+                    "suggestion": "use_get_user_mandates_tool" if user_mandates else "create_new_cart_with_shopping_agent"
+                })
+
+            # Mandate exists but is invalid (expired or wrong status)
+            _logger.error(
+                f"Mandate info: status={mandate_info.status.value}, "
+                f"expires_at={mandate_info.expires_at.isoformat() if mandate_info.expires_at else 'None'}"
+            )
             return json.dumps({
-                "error": "Invalid or expired mandate",
+                "error": "mandate_invalid",
+                "message": f"訂單號 {mandate_id} 已失效（狀態：{mandate_info.status.value}）",
                 "mandate_id": mandate_id,
                 "status": "failed",
-                "debug_info": f"Mandate status: {mandate_info.status.value if mandate_info else 'not found'}"
+                "mandate_status": mandate_info.status.value,
+                "suggestion": "create_new_cart_with_shopping_agent"
             })
         
         # Get mandate details for amount if not provided
@@ -357,10 +387,57 @@ def get_mandate_details(mandate_id: str) -> str:
         })
 
 
+def get_user_mandates(user_id: str) -> str:
+    """
+    Get all active mandates for a user.
+
+    CRITICAL: Use this tool when mandate not found errors occur to:
+    - Show the user their actual valid mandate IDs
+    - Debug mandate creation issues
+    - Verify if mandates were actually created
+
+    Args:
+        user_id: User identifier
+
+    Returns:
+        JSON string with list of active mandates
+    """
+    try:
+        _logger.info(f"Getting active mandates for user: {user_id}")
+
+        mandates = _mandate_service.get_user_mandates(user_id)
+
+        response = {
+            "user_id": user_id,
+            "active_mandates": mandates,
+            "total_count": len(mandates),
+            "has_mandates": len(mandates) > 0
+        }
+
+        if not mandates:
+            response["message"] = (
+                "您目前沒有有效的支付訂單。\n"
+                "請先回到購物代理，將商品加入購物車並創建支付訂單。"
+            )
+        else:
+            response["message"] = f"您有 {len(mandates)} 個有效的支付訂單"
+
+        _logger.info(f"Found {len(mandates)} active mandate(s) for user {user_id}")
+        return json.dumps(response, default=str)
+
+    except Exception as e:
+        _logger.error(f"Get user mandates error: {str(e)}")
+        return json.dumps({
+            "error": f"Failed to get user mandates: {str(e)}",
+            "user_id": user_id,
+            "active_mandates": []
+        })
+
+
 def cleanup_expired_data() -> str:
     """
     Clean up expired OTPs and mandates for maintenance.
-    
+
     Returns:
         JSON string with cleanup results
     """
@@ -368,19 +445,19 @@ def cleanup_expired_data() -> str:
         # Run async cleanup
         # Call synchronous cleanup methods
         expired_otps = _payment_service.cleanup_expired_otps()
-        
+
         expired_mandates = _mandate_service.cleanup_expired_mandates()
-        
+
         result = {
             "cleanup_completed": True,
             "expired_otps_removed": expired_otps,
             "expired_mandates_removed": expired_mandates,
             "cleanup_timestamp": "now"
         }
-        
+
         _logger.info(f"Cleanup completed: {expired_otps} OTPs, {expired_mandates} mandates")
         return json.dumps(result, default=str)
-        
+
     except Exception as e:
         _logger.error(f"Cleanup error: {str(e)}")
         return json.dumps({

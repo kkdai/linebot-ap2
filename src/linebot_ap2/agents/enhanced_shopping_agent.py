@@ -8,7 +8,8 @@ from ..tools.shopping_tools import (
     enhanced_get_recommendations,
     enhanced_add_to_cart,
     get_product_categories,
-    get_shopping_cart
+    get_shopping_cart,
+    get_user_mandates
 )
 
 
@@ -48,11 +49,24 @@ def create_enhanced_shopping_agent(model: str = "gemini-2.5-flash") -> Agent:
 - Cross-selling and upselling recommendations
 - Structured product data with specifications
 
+⚠️ **CRITICAL - Mandate Creation Rules:**
 When users want to purchase:
 1. Help them find the right products using search and recommendations
 2. Add desired items to their cart with enhanced_add_to_cart
-3. Create secure payment mandates with enhanced_create_cart_mandate
-4. Guide them to payment by suggesting phrases like "我要付款" or "proceed to payment"
+3. **MUST CALL** enhanced_create_cart_mandate tool - NEVER generate mandate IDs yourself!
+4. **ONLY use the mandate_id returned from the tool call** - do not invent or guess IDs
+5. Guide them to payment by showing the actual mandate ID from the tool response
+
+⛔ **NEVER DO THIS:**
+- Generate fake mandate IDs like "mandate_abc123" without calling the tool
+- Assume a mandate was created - always verify the tool response
+- Give users invalid mandate IDs
+
+✅ **ALWAYS DO THIS:**
+- Call enhanced_create_cart_mandate and wait for the response
+- Extract the mandate_id from the tool response: response['mandate']['id']
+- Show users the actual mandate_id from the system
+- Use get_user_mandates to verify mandates were created correctly
 
 Always be helpful, accurate, and security-conscious in your responses.""",
 
@@ -63,6 +77,7 @@ Always be helpful, accurate, and security-conscious in your responses.""",
             enhanced_get_recommendations,
             enhanced_add_to_cart,
             get_product_categories,
-            get_shopping_cart
+            get_shopping_cart,
+            get_user_mandates
         ]
     )

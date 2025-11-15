@@ -3,14 +3,13 @@
 import json
 from typing import Optional
 
-from ..services.product_service import ProductService
-from ..services.mandate_service import MandateService
+from ..services import get_product_service, get_mandate_service
 from ..models.product import ProductCategory
 from ..common.logger import setup_logger
 
-# Initialize services
-_product_service = ProductService()
-_mandate_service = MandateService()
+# Use shared service instances to ensure data consistency across agents
+_product_service = get_product_service()
+_mandate_service = get_mandate_service()
 _logger = setup_logger("shopping_tools")
 
 
@@ -273,16 +272,16 @@ def get_product_categories() -> str:
 def get_shopping_cart(user_id: str) -> str:
     """
     Get user's current shopping cart.
-    
+
     Args:
         user_id: User identifier
-        
+
     Returns:
         JSON string with cart contents
     """
     try:
         cart = _product_service.get_shopping_cart(user_id)
-        
+
         response = {
             "cart": {
                 "user_id": cart.user_id,
@@ -294,12 +293,57 @@ def get_shopping_cart(user_id: str) -> str:
                 "updated_at": cart.updated_at.isoformat()
             }
         }
-        
+
         return json.dumps(response, default=str)
-        
+
     except Exception as e:
         _logger.error(f"Get cart error: {str(e)}")
         return json.dumps({
             "error": f"Failed to get cart: {str(e)}",
             "user_id": user_id
+        })
+
+
+def get_user_mandates(user_id: str) -> str:
+    """
+    Get all active mandates for a user.
+
+    This tool is essential for:
+    - Verifying that mandates were actually created
+    - Debugging "mandate not found" issues
+    - Showing users their valid mandate IDs
+
+    Args:
+        user_id: User identifier
+
+    Returns:
+        JSON string with list of active mandates
+    """
+    try:
+        _logger.info(f"Getting active mandates for user: {user_id}")
+
+        mandates = _mandate_service.get_user_mandates(user_id)
+
+        response = {
+            "user_id": user_id,
+            "active_mandates": mandates,
+            "total_count": len(mandates),
+            "has_mandates": len(mandates) > 0
+        }
+
+        if not mandates:
+            response["message"] = (
+                "No active mandates found. "
+                "Create a new mandate by adding items to cart and using enhanced_create_cart_mandate."
+            )
+
+        _logger.info(f"Found {len(mandates)} active mandate(s) for user {user_id}")
+        return json.dumps(response, default=str)
+
+    except Exception as e:
+        _logger.error(f"Get user mandates error: {str(e)}")
+        return json.dumps({
+            "error": f"Failed to get user mandates: {str(e)}",
+            "user_id": user_id,
+            "active_mandates": []
         })
