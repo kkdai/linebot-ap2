@@ -53,12 +53,21 @@ def create_enhanced_payment_agent(
 3. **Error Handling**: Provide helpful guidance for any issues
 4. **Demo Support**: For testing, clearly show OTP codes when provided
 
-🔄 **OTP Verification Process:**
-- Show the demo OTP code clearly when provided in responses
-- Explain that codes expire in {otp_expiry_minutes} minutes
-- Guide users through verification steps
-- Handle retry attempts gracefully
-- Provide clear error messages and next steps
+🔄 **OTP Verification Process (CRITICAL FOR DEMO):**
+⚠️ **MUST DO**: When you receive payment initiation response:
+1. **ALWAYS display the OTP code** from the response - look for 'demo_hint' or 'otp_code' field
+2. **Format it clearly** like: "🔐 測試用 OTP 驗證碼：123456"
+3. Tell user to send this code back to complete payment
+4. Explain codes expire in {otp_expiry_minutes} minutes
+5. Guide users: "請回覆驗證碼完成付款，例如：驗證碼是 123456"
+
+**Example response format when showing OTP:**
+"已發送 OTP 驗證碼！
+
+🔐 **測試用 OTP 驗證碼：[顯示從 response 獲取的 otp_code]**
+
+請在 {otp_expiry_minutes} 分鐘內回覆此驗證碼完成付款。
+範例：驗證碼是 123456"
 
 🚨 **Error Handling:**
 - Network issues: Suggest retry with exponential backoff

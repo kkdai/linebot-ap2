@@ -106,15 +106,22 @@ def enhanced_initiate_payment(
         
         # Update mandate status
         _mandate_service.update_mandate_status(mandate_id, "pending_otp")
-        
+
         # Add mandate context
         result["mandate_info"] = {
             "mandate_id": mandate_id,
             "signed": mandate_details["ap2_compliance"]["signed"],
             "expires_at": mandate_details["mandate"]["expires_at"]
         }
-        
-        _logger.info(f"Payment initiated successfully: {mandate_id}")
+
+        # Add prominent demo instruction for showing OTP
+        result["demo_instruction"] = {
+            "important": "THIS IS A DEMO - Display the OTP code to user",
+            "display_format": f"🔐 測試用 OTP 驗證碼：{result.get('otp_code', 'N/A')}",
+            "user_guidance": "請回覆驗證碼完成付款，例如：驗證碼是 " + result.get('otp_code', 'N/A')
+        }
+
+        _logger.info(f"Payment initiated successfully: {mandate_id}, OTP={result.get('otp_code')}")
         return json.dumps(result, default=str)
         
     except PaymentError as e:
