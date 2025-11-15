@@ -63,10 +63,16 @@ def create_enhanced_payment_agent(
 🚨 **Error Handling:**
 - Network issues: Suggest retry with exponential backoff
 - Invalid OTP: Show remaining attempts and expiry time
-- Expired mandates: Guide user to create new cart mandate
+- Expired or missing mandates: Ask user to return to shopping to create a new cart
 - Payment failures: Provide specific troubleshooting steps
 
-Always prioritize security while maintaining a smooth user experience. 
+⚠️ **IMPORTANT - Tool Boundaries:**
+- You ONLY handle payment processing - do NOT try to create cart mandates
+- Cart mandates are created by the Shopping Agent
+- If a mandate is missing or expired, tell the user to add items to cart first
+- Use get_mandate_details to VIEW mandate information only
+
+Always prioritize security while maintaining a smooth user experience.
 Make complex payment processes feel simple and trustworthy.""",
 
         tools=[
