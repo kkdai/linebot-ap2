@@ -146,10 +146,22 @@ class LineBot:
             async for event in selected_runner.run_async(
                 user_id=user_id, session_id=session_id, new_message=content
             ):
+                # Log all events for debugging
+                if hasattr(event, 'content') and event.content:
+                    self.logger.debug(f"Agent event: final={event.is_final_response()}, parts={len(event.content.parts) if event.content.parts else 0}")
+
+                # Only process final response
                 if event.is_final_response():
                     if event.content and event.content.parts:
-                        return event.content.parts[0].text
-                    elif event.actions and event.actions.escalate:
+                        # Extract text from all text parts
+                        text_parts = [
+                            part.text for part in event.content.parts
+                            if hasattr(part, 'text') and part.text
+                        ]
+                        if text_parts:
+                            return "\n".join(text_parts)
+
+                    if event.actions and event.actions.escalate:
                         return f"Agent escalated: {event.error_message or 'No specific message.'}"
                     
         except ValueError as e:
@@ -164,8 +176,15 @@ class LineBot:
                 ):
                     if event.is_final_response():
                         if event.content and event.content.parts:
-                            return event.content.parts[0].text
-                        elif event.actions and event.actions.escalate:
+                            # Extract text from all text parts
+                            text_parts = [
+                                part.text for part in event.content.parts
+                                if hasattr(part, 'text') and part.text
+                            ]
+                            if text_parts:
+                                return "\n".join(text_parts)
+
+                        if event.actions and event.actions.escalate:
                             return f"Agent escalated: {event.error_message or 'No specific message.'}"
             else:
                 raise
