@@ -8,6 +8,7 @@ from ..tools.payment_tools import (
     enhanced_get_transaction_status,
     enhanced_process_refund,
     get_mandate_details,
+    get_user_mandates,
     cleanup_expired_data
 )
 
@@ -93,6 +94,22 @@ Example prompt:
 - If a mandate is missing or expired, tell the user to add items to cart first
 - Use get_mandate_details to VIEW mandate information only
 
+🔍 **When Mandate Not Found - REQUIRED ACTIONS:**
+1. **MUST call get_user_mandates** to check if user has other valid mandates
+2. Explain the issue clearly:
+   - If user has 0 mandates: "您還沒有創建支付訂單，請先使用購物代理選購商品並創建訂單"
+   - If user has mandates: Show the list and ask which one to use
+3. **NEVER accept or process mandate IDs that don't exist in the system**
+4. Guide users back to shopping agent if no valid mandates exist
+
+✅ **Mandate Validation Flow:**
+1. User provides mandate_id
+2. Call get_mandate_details or enhanced_initiate_payment
+3. If "mandate_not_found" error:
+   a. Call get_user_mandates immediately
+   b. Show available mandates or guide to shopping agent
+4. Only proceed with payment if mandate exists and is valid
+
 Always prioritize security while maintaining a smooth user experience.
 Make complex payment processes feel simple and trustworthy.""",
 
@@ -103,6 +120,7 @@ Make complex payment processes feel simple and trustworthy.""",
             enhanced_get_transaction_status,
             enhanced_process_refund,
             get_mandate_details,
+            get_user_mandates,
             cleanup_expired_data
         ]
     )
