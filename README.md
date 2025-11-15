@@ -164,10 +164,7 @@ linebot-ap2/
 ├── main_new.py               # 開發版本 (可選)
 ├── pyproject.toml            # 現代 Python 專案配置
 ├── requirements.txt          # 舊版依賴 (向後相容)
-├── CLAUDE.md                 # Claude Code 指導文件
-└── legacy/                   # 舊版實現 (向後相容)
-    ├── ap2_agents/           # 原始代理實現
-    └── multi_tool_agent/     # 天氣時間代理
+└── CLAUDE.md                 # Claude Code 指導文件
 ```
 
 ## ⚙️ 環境設定
