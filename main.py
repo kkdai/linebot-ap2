@@ -21,18 +21,11 @@ from linebot import AsyncLineBotApi, WebhookParser
 from src.linebot_ap2.config import get_settings, validate_environment
 from src.linebot_ap2.common import SessionManager, IntentDetector, setup_logger
 from src.linebot_ap2.common.logger import log_agent_interaction, log_error_with_context
-
-# Import legacy agent implementations (temporary)
-from ap2_agents.shopping_agent import shopping_agent
-from ap2_agents.payment_processor import (
-    get_user_payment_methods,
-    initiate_payment,
-    verify_otp,
-    process_refund,
-    get_transaction_status
+from src.linebot_ap2.agents import (
+    create_enhanced_shopping_agent,
+    create_enhanced_payment_agent
 )
 
-from google.adk.agents import Agent
 from google.adk.runners import Runner
 from google.genai import types
 
@@ -71,46 +64,31 @@ class LineBot:
     
     def _init_agents(self):
         """Initialize ADK agents with enhanced configuration."""
-        # Payment Agent (enhanced)
-        self.payment_agent = Agent(
-            name="ap2_payment_agent", 
-            model=self.settings.default_model,
-            description="Agent to handle secure payment processing with OTP verification for AP2 protocol.",
-            instruction=f"""You handle secure payment processing for purchases. When users want to pay:
-            1. Show available payment methods
-            2. Initiate payment with OTP challenge
-            3. Guide through OTP verification - IMPORTANT: When showing OTP info, always display the demo_hint or otp_code from the response
-            4. Confirm successful transactions
-            
-            Security features:
-            - Maximum {self.settings.max_otp_attempts} OTP attempts
-            - OTP expires in {self.settings.otp_expiry_minutes} minutes
-            - Always explain security features to build user confidence
-            
-            For demo purposes, make sure to show the OTP code clearly when it's provided in the response.""",
-            tools=[
-                get_user_payment_methods,
-                initiate_payment, 
-                verify_otp,
-                process_refund,
-                get_transaction_status
-            ]
+        # Create enhanced agents using factory functions
+        self.shopping_agent = create_enhanced_shopping_agent(
+            model=self.settings.default_model
         )
-        
-        # Initialize runners
+
+        self.payment_agent = create_enhanced_payment_agent(
+            model=self.settings.default_model,
+            max_otp_attempts=self.settings.max_otp_attempts,
+            otp_expiry_minutes=self.settings.otp_expiry_minutes
+        )
+
+        # Initialize runners with enhanced agents
         self.shopping_runner = Runner(
-            agent=shopping_agent,
-            app_name=self.settings.app_name, 
+            agent=self.shopping_agent,
+            app_name=self.settings.app_name,
             session_service=self.session_manager.session_service,
         )
-        
+
         self.payment_runner = Runner(
             agent=self.payment_agent,
             app_name=self.settings.app_name,
             session_service=self.session_manager.session_service,
         )
-        
-        self.logger.info("✓ All agents and runners initialized")
+
+        self.logger.info("✓ Enhanced agents and runners initialized successfully")
     
     async def process_message(self, event: MessageEvent) -> str:
         """Process incoming message with enhanced error handling."""
