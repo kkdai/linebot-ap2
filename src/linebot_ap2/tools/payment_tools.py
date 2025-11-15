@@ -68,7 +68,7 @@ def enhanced_initiate_payment(
     mandate_id: str,
     payment_method_id: str,
     user_id: str,
-    amount: float = None
+    amount: Optional[float] = None
 ) -> str:
     """
     Initiate payment with enhanced security and AP2 compliance.

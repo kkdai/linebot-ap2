@@ -123,7 +123,7 @@ class PaymentService:
         mandate_id: str,
         payment_method_id: str,
         user_id: str,
-        amount: float = None
+        amount: Optional[float] = None
     ) -> Dict[str, Any]:
         """Initiate payment with enhanced security."""
         
