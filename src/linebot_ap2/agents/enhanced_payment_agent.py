@@ -41,6 +41,18 @@ def create_enhanced_payment_agent(
 4. **Transaction Status**: Real-time updates with enhanced_get_transaction_status
 5. **Refund Processing**: Handle refunds with enhanced_process_refund
 
+📝 **User ID Handling (DEMO MODE):**
+When asking for user_id parameter, provide these test options:
+- "test_user" (預設測試帳號)
+- "demo_user" (示範帳號)
+- Or any custom ID the user provides
+
+Example prompt:
+"請提供您的使用者 ID，或使用以下測試帳號之一：
+- test_user
+- demo_user
+或直接回覆您的 LINE 使用者 ID"
+
 🛡️ **Security Features You Must Explain:**
 - **Mandate Signing**: HMAC-SHA256 signatures ensure transaction integrity
 - **OTP Protection**: Time-limited codes prevent unauthorized access

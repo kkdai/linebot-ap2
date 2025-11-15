@@ -74,14 +74,30 @@ def enhanced_initiate_payment(
         JSON string with payment initiation details and OTP info
     """
     try:
-        _logger.info(f"Initiating payment: mandate={mandate_id}, user={user_id}")
-        
+        _logger.info(f"Initiating payment: mandate={mandate_id}, user={user_id}, method={payment_method_id}")
+
+        # Get mandate details for logging
+        mandate_details = _mandate_service.get_mandate_details(mandate_id)
+        _logger.info(f"Mandate details retrieved: {mandate_details.get('mandate', {}).get('id', 'N/A')}")
+
         # Verify mandate exists and is valid
-        if not _mandate_service.is_mandate_valid(mandate_id):
+        _logger.info(f"Checking mandate validity for: {mandate_id}")
+        is_valid = _mandate_service.is_mandate_valid(mandate_id)
+        _logger.info(f"Mandate {mandate_id} validation result: {is_valid}")
+
+        if not is_valid:
+            _logger.error(f"❌ Mandate validation failed for {mandate_id}")
+            mandate_info = _mandate_service.get_mandate(mandate_id)
+            if mandate_info:
+                _logger.error(
+                    f"Mandate info: status={mandate_info.status.value}, "
+                    f"expires_at={mandate_info.expires_at.isoformat() if mandate_info.expires_at else 'None'}"
+                )
             return json.dumps({
                 "error": "Invalid or expired mandate",
                 "mandate_id": mandate_id,
-                "status": "failed"
+                "status": "failed",
+                "debug_info": f"Mandate status: {mandate_info.status.value if mandate_info else 'not found'}"
             })
         
         # Get mandate details for amount if not provided
