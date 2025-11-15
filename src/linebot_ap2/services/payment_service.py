@@ -3,7 +3,6 @@
 import json
 import uuid
 import random
-import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 from enum import Enum
@@ -84,22 +83,22 @@ class PaymentService:
         for user_id in ["demo_user", "test_user"]:
             self.payment_methods[user_id] = demo_methods.copy()
     
-    async def get_user_payment_methods(self, user_id: str) -> Dict[str, Any]:
+    def get_user_payment_methods(self, user_id: str) -> Dict[str, Any]:
         """Get available payment methods for user."""
-        
+
         methods = self.payment_methods.get(user_id, [])
-        
+
         if not methods:
             # Create default payment methods for new users
             self.payment_methods[user_id] = self._create_default_payment_methods()
             methods = self.payment_methods[user_id]
-        
+
         return {
             "user_id": user_id,
             "payment_methods": [method.dict() for method in methods],
             "total": len(methods),
             "default_method": next(
-                (method.dict() for method in methods if method.is_default), 
+                (method.dict() for method in methods if method.is_default),
                 None
             )
         }
@@ -118,7 +117,7 @@ class PaymentService:
             )
         ]
     
-    async def initiate_payment(
+    def initiate_payment(
         self,
         mandate_id: str,
         payment_method_id: str,
@@ -187,7 +186,7 @@ class PaymentService:
             self.logger.error(f"Payment initiation failed: {str(e)}")
             raise PaymentError(f"Payment initiation failed: {str(e)}")
     
-    async def verify_otp(
+    def verify_otp(
         self,
         mandate_id: str,
         otp_code: str,
@@ -228,7 +227,7 @@ class PaymentService:
                 del self.otp_store[mandate_id]
                 
                 # Process payment
-                transaction = await self._process_payment(mandate_id, otp_data)
+                transaction = self._process_payment(mandate_id, otp_data)
                 
                 self.logger.info(
                     f"Payment successful: mandate={mandate_id}, "
@@ -282,7 +281,7 @@ class PaymentService:
             self.logger.error(f"OTP verification failed: {str(e)}")
             raise PaymentError(f"OTP verification failed: {str(e)}")
     
-    async def _process_payment(
+    def _process_payment(
         self,
         mandate_id: str,
         otp_data: OTPData
@@ -306,15 +305,14 @@ class PaymentService:
         # Store transaction
         self.transactions[transaction_id] = transaction
         
-        # Simulate payment processing delay
-        await asyncio.sleep(0.1)
+        # Simulate payment processing delay (removed async sleep)
         
         # Mark as completed
         transaction.mark_completed()
         
         return transaction
     
-    async def get_transaction_status(self, transaction_id: str) -> Dict[str, Any]:
+    def get_transaction_status(self, transaction_id: str) -> Dict[str, Any]:
         """Get transaction status with detailed information."""
         
         transaction = self.transactions.get(transaction_id)
@@ -337,7 +335,7 @@ class PaymentService:
             "error_message": transaction.error_message
         }
     
-    async def process_refund(
+    def process_refund(
         self,
         transaction_id: str,
         amount: float,
@@ -368,8 +366,7 @@ class PaymentService:
             # Store refund
             self.refunds[refund_id] = refund
             
-            # Simulate processing
-            await asyncio.sleep(0.1)
+            # Simulate processing (removed async sleep)
             refund.status = "completed"
             refund.processed_at = datetime.now()
             
@@ -398,7 +395,7 @@ class PaymentService:
         """Mask contact information for security."""
         return f"***-***-{random.randint(1000, 9999)}"
     
-    async def cleanup_expired_otps(self) -> int:
+    def cleanup_expired_otps(self) -> int:
         """Clean up expired OTPs. Returns count of cleaned OTPs."""
         
         expired_otps = []
