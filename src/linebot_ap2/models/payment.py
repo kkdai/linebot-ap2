@@ -173,6 +173,53 @@ class PaymentCredential(BaseModel):
         return True
 
 
+class TokenType(str, Enum):
+    """Type of payment token."""
+    SINGLE_USE = "single_use"
+    MULTI_USE = "multi_use"
+    RECURRING = "recurring"
+
+
+class PaymentToken(BaseModel):
+    """
+    One-time payment token issued by Credential Provider.
+    Binds a credential to a specific mandate for secure payment.
+    """
+    token_id: str
+    credential_id: str
+    user_id: str
+    mandate_id: str
+
+    # Token value (used by payment processor)
+    token_value: str
+    token_type: TokenType = TokenType.SINGLE_USE
+
+    # Transaction binding
+    amount: float
+    currency: str
+
+    # Validity
+    created_at: datetime = Field(default_factory=datetime.now)
+    expires_at: datetime
+
+    # Usage tracking
+    used: bool = False
+    used_at: Optional[datetime] = None
+
+    def is_valid(self) -> bool:
+        """Check if token is valid for use."""
+        if self.used:
+            return False
+        if datetime.now() > self.expires_at:
+            return False
+        return True
+
+    def consume(self) -> None:
+        """Mark token as used."""
+        self.used = True
+        self.used_at = datetime.now()
+
+
 class CartItem(BaseModel):
     """Cart item model."""
     product_id: str
