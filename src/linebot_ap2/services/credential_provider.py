@@ -1,5 +1,6 @@
 """AP2 Credential Provider Service - Manages user payment credentials."""
 
+import json
 import uuid
 import secrets
 from datetime import datetime, timedelta
@@ -41,8 +42,7 @@ class CredentialProviderService:
         self._tokens: Dict[str, PaymentToken] = {}  # token_id -> token
 
         # Initialize demo credentials
-        # TODO: Uncomment in Task 5 after register_credential is implemented
-        # self._init_demo_credentials()
+        self._init_demo_credentials()
 
         self.logger.info("✓ Credential Provider initialized")
 
@@ -88,3 +88,97 @@ class CredentialProviderService:
     def _decrypt(self, encrypted_data: str) -> str:
         """Decrypt sensitive data."""
         return self._fernet.decrypt(encrypted_data.encode()).decode()
+
+    def register_credential(
+        self,
+        user_id: str,
+        credential_type: PaymentMethodType,
+        credential_data: Dict[str, Any],
+        brand: str,
+        is_default: bool = False,
+        nickname: Optional[str] = None,
+        supported_currencies: Optional[List[str]] = None,
+        max_transaction_amount: Optional[float] = None
+    ) -> PaymentCredential:
+        """
+        Register a new payment credential for a user.
+
+        Args:
+            user_id: User identifier
+            credential_type: Type of credential (CARD, WALLET, etc.)
+            credential_data: Sensitive credential data to encrypt
+            brand: Brand name (Visa, Mastercard, PayPal, etc.)
+            is_default: Set as default payment method
+            nickname: User-friendly name
+            supported_currencies: List of supported currencies
+            max_transaction_amount: Maximum transaction limit
+
+        Returns:
+            Created PaymentCredential
+        """
+        credential_id = f"cred_{uuid.uuid4().hex[:12]}"
+
+        # Extract last four digits for display
+        if credential_type == PaymentMethodType.CARD:
+            card_number = credential_data.get("card_number", "")
+            last_four = card_number[-4:] if len(card_number) >= 4 else "****"
+        else:
+            last_four = credential_data.get("last_four", "****")
+
+        # Encrypt sensitive data
+        encrypted_data = self._encrypt(json.dumps(credential_data))
+
+        # If setting as default, unset other defaults
+        if is_default and user_id in self._user_credentials:
+            for cred_id in self._user_credentials[user_id]:
+                if cred_id in self._credentials:
+                    self._credentials[cred_id].is_default = False
+
+        # Create credential
+        credential = PaymentCredential(
+            credential_id=credential_id,
+            user_id=user_id,
+            type=credential_type,
+            last_four=last_four,
+            brand=brand,
+            nickname=nickname,
+            encrypted_data=encrypted_data,
+            is_default=is_default,
+            priority=len(self._user_credentials.get(user_id, [])),
+            supported_currencies=supported_currencies or ["USD", "TWD"],
+            max_transaction_amount=max_transaction_amount,
+            status=CredentialStatus.ACTIVE
+        )
+
+        # Store credential
+        self._credentials[credential_id] = credential
+
+        if user_id not in self._user_credentials:
+            self._user_credentials[user_id] = []
+        self._user_credentials[user_id].append(credential_id)
+
+        self.logger.info(f"✓ Credential registered: {credential_id} for user {user_id}")
+        return credential
+
+    def get_user_credentials(self, user_id: str) -> List[PaymentCredential]:
+        """Get all credentials for a user."""
+        credential_ids = self._user_credentials.get(user_id, [])
+        return [
+            self._credentials[cid]
+            for cid in credential_ids
+            if cid in self._credentials
+        ]
+
+    def get_credential(self, credential_id: str) -> Optional[PaymentCredential]:
+        """Get a specific credential by ID."""
+        return self._credentials.get(credential_id)
+
+    def deactivate_credential(self, credential_id: str) -> bool:
+        """Deactivate a credential."""
+        credential = self._credentials.get(credential_id)
+        if not credential:
+            return False
+
+        credential.status = CredentialStatus.SUSPENDED
+        self.logger.info(f"✓ Credential deactivated: {credential_id}")
+        return True
