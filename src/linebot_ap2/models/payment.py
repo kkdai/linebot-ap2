@@ -58,6 +58,47 @@ class RiskPayload(BaseModel):
     challenge_completed: Optional[str] = None  # "3ds", "otp", etc.
 
 
+class ShoppingIntent(BaseModel):
+    """Shopping intent parameters for human-not-present scenarios."""
+    product_categories: List[str] = Field(default_factory=list)
+    specific_skus: List[str] = Field(default_factory=list)
+    budget_max: Optional[float] = None
+    budget_currency: str = "USD"
+    criteria: Dict[str, Any] = Field(default_factory=dict)  # e.g., {"refundable": True}
+
+
+class IntentMandate(BaseModel):
+    """
+    Intent Mandate for human-not-present scenarios.
+    Per AP2 Specification Section 4.1.2.
+    """
+    mandate_id: str
+    type: str = "intent_mandate"
+    user_id: str
+
+    # AP2 Spec 4.1.2 required fields
+    prompt_playback: str  # Agent's understanding of user request
+    shopping_intent: ShoppingIntent
+    chargeable_payment_methods: List[str] = Field(default_factory=list)
+    time_to_live: datetime
+
+    # Payer/Payee info
+    payer_info: PayerInfo
+    payee_info: Optional[PayeeInfo] = None  # May be determined later
+
+    # Risk & Security
+    risk_payload: RiskPayload = Field(default_factory=RiskPayload)
+    user_signature: Optional[str] = None  # Hardware-backed signature placeholder
+
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.now)
+    status: PaymentStatus = PaymentStatus.PENDING
+
+    def is_expired(self) -> bool:
+        """Check if intent mandate has expired."""
+        return datetime.now() > self.time_to_live
+
+
 class PaymentMethod(BaseModel):
     """Payment method model."""
     id: str
