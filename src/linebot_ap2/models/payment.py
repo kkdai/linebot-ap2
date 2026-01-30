@@ -125,27 +125,61 @@ class CartItem(BaseModel):
 
 
 class CartMandate(BaseModel):
-    """Cart mandate for AP2 payment processing."""
+    """
+    Cart Mandate for human-present scenarios.
+    Per AP2 Specification Section 4.1.1.
+
+    Flow: Merchant signs first (step 10), then user confirms (step 21).
+    """
     mandate_id: str
     type: str = "cart_mandate"
     user_id: str
+
+    # Cart contents
     items: List[CartItem]
     total_amount: float
     currency: str = "USD"
+
+    # AP2 Spec 4.1.1 new fields
+    payer_info: Optional[PayerInfo] = None
+    payee_info: Optional[PayeeInfo] = None
+    payment_method_token: Optional[str] = None  # Tokenized payment method
+    shipping_address: Optional[Dict[str, Any]] = None
+    risk_payload: RiskPayload = Field(default_factory=RiskPayload)
+
+    # Signatures (AP2 Spec Section 7.1 Steps 10-11, 21-22)
+    merchant_signature: Optional[str] = None  # Merchant signs first
+    merchant_signed_at: Optional[datetime] = None
+    user_signature: Optional[str] = None  # User confirms
+    user_signed_at: Optional[datetime] = None
+
+    # Timestamps and status
     created_at: datetime = Field(default_factory=datetime.now)
-    status: PaymentStatus = PaymentStatus.PENDING
     expires_at: Optional[datetime] = None
+    status: PaymentStatus = PaymentStatus.PENDING
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    
+
     def calculate_total(self) -> float:
         """Calculate total amount from items."""
         return sum(item.subtotal for item in self.items)
-    
+
     def is_expired(self) -> bool:
         """Check if mandate is expired."""
         if self.expires_at:
             return datetime.now() > self.expires_at
         return False
+
+    def is_merchant_signed(self) -> bool:
+        """Check if merchant has signed."""
+        return self.merchant_signature is not None
+
+    def is_user_signed(self) -> bool:
+        """Check if user has signed."""
+        return self.user_signature is not None
+
+    def is_fully_signed(self) -> bool:
+        """Check if both merchant and user have signed."""
+        return self.is_merchant_signed() and self.is_user_signed()
 
 
 class OTPData(BaseModel):
