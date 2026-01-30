@@ -182,6 +182,61 @@ class CartMandate(BaseModel):
         return self.is_merchant_signed() and self.is_user_signed()
 
 
+class PaymentMandateContents(BaseModel):
+    """Contents of the payment mandate per AP2 spec 4.1.3."""
+    payment_mandate_id: str
+    payment_details_id: str  # Reference to cart/order
+    payment_details_total: Dict[str, Any]  # {label, amount: {currency, value}, refund_period}
+    payment_response: Dict[str, Any]  # {request_id, method_name, details, shipping_address, ...}
+    merchant_agent: str
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+
+class PaymentMandate(BaseModel):
+    """
+    Payment Mandate for network/issuer visibility.
+    Per AP2 Specification Section 4.1.3.
+
+    This VDC is shared with network/issuer along with transaction authorization.
+    """
+    payment_mandate_id: str
+    type: str = "payment_mandate"
+
+    # Bound to cart/intent mandate
+    cart_mandate_id: Optional[str] = None
+    intent_mandate_id: Optional[str] = None
+
+    # AP2 Spec 4.1.3 required fields
+    agent_presence: bool = True  # AI agent involved
+    transaction_modality: TransactionModality = TransactionModality.HUMAN_PRESENT
+
+    # Payment details
+    payment_mandate_contents: PaymentMandateContents
+
+    # User authorization (JWT/signature for future PKI)
+    user_authorization: Optional[str] = None
+
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    def to_network_payload(self) -> Dict[str, Any]:
+        """Generate payload for network/issuer per AP2 spec."""
+        return {
+            "payment_mandate_id": self.payment_mandate_id,
+            "agent_presence": self.agent_presence,
+            "transaction_modality": self.transaction_modality.value,
+            "cart_mandate_id": self.cart_mandate_id,
+            "intent_mandate_id": self.intent_mandate_id,
+            "payment_details": {
+                "id": self.payment_mandate_contents.payment_details_id,
+                "total": self.payment_mandate_contents.payment_details_total,
+                "merchant_agent": self.payment_mandate_contents.merchant_agent,
+            },
+            "user_authorization": self.user_authorization,
+            "timestamp": self.created_at.isoformat()
+        }
+
+
 class OTPData(BaseModel):
     """OTP verification data."""
     otp: str
