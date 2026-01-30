@@ -14,6 +14,10 @@ _shared_product_service = ProductService()
 _shared_mandate_service = MandateService()
 _shared_payment_service = PaymentService()
 
+# Wire up cross-service dependencies for AP2 compliance
+# PaymentService needs MandateService to create PaymentMandate during payment processing
+_shared_payment_service.set_mandate_service(_shared_mandate_service)
+
 
 def get_product_service() -> ProductService:
     """Get shared ProductService singleton instance."""
