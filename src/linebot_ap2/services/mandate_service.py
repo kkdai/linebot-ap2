@@ -137,7 +137,119 @@ class MandateService:
         )
 
         return mandate_signature
-    
+
+    def merchant_sign_mandate(
+        self,
+        mandate: CartMandate,
+        merchant_id: str = "demo_merchant",
+        merchant_name: str = "Demo Store"
+    ) -> CartMandate:
+        """
+        Merchant signs the cart mandate per AP2 spec Section 7.1 Step 10.
+        This happens BEFORE user confirmation.
+        """
+        self.logger.info(f"Merchant signing mandate: {mandate.mandate_id}")
+
+        # Set payee info
+        mandate.payee_info = PayeeInfo(
+            merchant_id=merchant_id,
+            merchant_name=merchant_name,
+            merchant_url="https://demo-store.example.com"
+        )
+
+        # Create merchant signature payload
+        nonce = uuid.uuid4().hex[:16]
+        timestamp = datetime.now()
+
+        payload = {
+            "mandate_id": mandate.mandate_id,
+            "merchant_id": merchant_id,
+            "total_amount": mandate.total_amount,
+            "currency": mandate.currency,
+            "items_count": len(mandate.items),
+            "timestamp": timestamp.isoformat(),
+            "nonce": nonce,
+            "signer": "merchant"
+        }
+
+        # Create signature
+        payload_string = json.dumps(payload, sort_keys=True, separators=(',', ':'))
+        signature = hmac.new(
+            self.secret_key.encode('utf-8'),
+            payload_string.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+
+        # Update mandate with merchant signature
+        mandate.merchant_signature = signature
+        mandate.merchant_signed_at = timestamp
+
+        # Update stored mandate
+        self.active_mandates[mandate.mandate_id] = mandate
+
+        self.logger.info(f"✓ Merchant signed mandate {mandate.mandate_id}")
+        return mandate
+
+    def user_sign_mandate(
+        self,
+        mandate_id: str,
+        user_id: str
+    ) -> CartMandate:
+        """
+        User signs the cart mandate per AP2 spec Section 7.1 Step 21.
+        This happens AFTER merchant signing and user confirmation.
+        """
+        mandate = self.get_mandate(mandate_id)
+        if not mandate:
+            raise ValueError(f"Mandate {mandate_id} not found")
+
+        if not mandate.is_merchant_signed():
+            raise ValueError("Mandate must be merchant-signed before user signing")
+
+        if mandate.user_id != user_id:
+            raise ValueError("User ID mismatch")
+
+        self.logger.info(f"User signing mandate: {mandate_id}")
+
+        # Set payer info
+        mandate.payer_info = PayerInfo(
+            user_id=user_id,
+            verified=True
+        )
+
+        # Create user signature payload
+        nonce = uuid.uuid4().hex[:16]
+        timestamp = datetime.now()
+
+        payload = {
+            "mandate_id": mandate.mandate_id,
+            "user_id": user_id,
+            "total_amount": mandate.total_amount,
+            "currency": mandate.currency,
+            "merchant_signature": mandate.merchant_signature,
+            "timestamp": timestamp.isoformat(),
+            "nonce": nonce,
+            "signer": "user"
+        }
+
+        # Create signature
+        payload_string = json.dumps(payload, sort_keys=True, separators=(',', ':'))
+        signature = hmac.new(
+            self.secret_key.encode('utf-8'),
+            payload_string.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+
+        # Update mandate with user signature
+        mandate.user_signature = signature
+        mandate.user_signed_at = timestamp
+
+        # Update stored mandate
+        self.active_mandates[mandate.mandate_id] = mandate
+
+        self.logger.info(f"✓ User signed mandate {mandate_id}")
+        return mandate
+
     def verify_mandate_signature(
         self, 
         mandate_id: str, 
