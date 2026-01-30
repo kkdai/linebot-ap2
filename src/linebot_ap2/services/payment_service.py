@@ -8,7 +8,8 @@ from typing import Dict, Any, Optional, List
 from enum import Enum
 
 from ..models.payment import (
-    PaymentMethod, OTPData, Transaction, PaymentStatus, RefundRequest
+    PaymentMethod, OTPData, Transaction, PaymentStatus, RefundRequest,
+    TransactionModality
 )
 from ..common.logger import setup_logger
 
@@ -45,7 +46,14 @@ class PaymentService:
         self._init_demo_payment_methods()
         
         self.logger.info("✓ Payment service initialized")
-    
+
+        # Reference to mandate service (set externally for PaymentMandate creation)
+        self._mandate_service = None
+
+    def set_mandate_service(self, mandate_service) -> None:
+        """Set mandate service reference for PaymentMandate creation."""
+        self._mandate_service = mandate_service
+
     def _init_demo_payment_methods(self):
         """Initialize demo payment methods."""
         demo_methods = [
@@ -287,29 +295,48 @@ class PaymentService:
         otp_data: OTPData
     ) -> Transaction:
         """Process the actual payment after OTP verification."""
-        
+
         # Generate transaction ID
         transaction_id = f"txn_{uuid.uuid4().hex[:12]}"
-        
+
+        # Get amount from mandate if available
+        amount = 999.99  # Default demo amount
+        if self._mandate_service:
+            mandate = self._mandate_service.get_mandate(mandate_id)
+            if mandate:
+                amount = mandate.total_amount
+
+                # Create PaymentMandate for network/issuer (AP2 Spec 4.1.3)
+                try:
+                    payment_mandate = self._mandate_service.create_payment_mandate(
+                        cart_mandate=mandate,
+                        payment_method_name="CARD",
+                        payment_token=otp_data.payment_method_id
+                    )
+                    self.logger.info(
+                        f"PaymentMandate created: {payment_mandate.payment_mandate_id} "
+                        f"for network/issuer visibility"
+                    )
+                except Exception as e:
+                    self.logger.warning(f"Failed to create PaymentMandate: {e}")
+
         # Create transaction record
         transaction = Transaction(
             transaction_id=transaction_id,
             mandate_id=mandate_id,
             user_id=otp_data.user_id,
-            amount=999.99,  # Demo amount, should come from mandate
+            amount=amount,
             currency="USD",
             payment_method_id=otp_data.payment_method_id,
             status=PaymentStatus.PROCESSING
         )
-        
+
         # Store transaction
         self.transactions[transaction_id] = transaction
-        
-        # Simulate payment processing delay (removed async sleep)
-        
+
         # Mark as completed
         transaction.mark_completed()
-        
+
         return transaction
     
     def get_transaction_status(self, transaction_id: str) -> Dict[str, Any]:
