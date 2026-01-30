@@ -24,6 +24,40 @@ class PaymentStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class TransactionModality(str, Enum):
+    """AP2 transaction modality per spec Section 4.1.3."""
+    HUMAN_PRESENT = "human_present"
+    HUMAN_NOT_PRESENT = "human_not_present"
+
+
+class PayerInfo(BaseModel):
+    """Verifiable payer identity per AP2 spec 4.1.1."""
+    user_id: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    device_id: Optional[str] = None
+    verified: bool = False
+
+
+class PayeeInfo(BaseModel):
+    """Verifiable merchant/payee identity per AP2 spec 4.1.1."""
+    merchant_id: str
+    merchant_name: str
+    merchant_url: Optional[str] = None
+    credential_provider_id: Optional[str] = None
+
+
+class RiskPayload(BaseModel):
+    """Risk signals for fraud prevention per AP2 spec 4.1.1."""
+    device_fingerprint: Optional[str] = None
+    ip_address: Optional[str] = None
+    session_id: Optional[str] = None
+    user_behavior_score: Optional[float] = None
+    previous_transactions: int = 0
+    account_age_days: int = 0
+    challenge_completed: Optional[str] = None  # "3ds", "otp", etc.
+
+
 class PaymentMethod(BaseModel):
     """Payment method model."""
     id: str
