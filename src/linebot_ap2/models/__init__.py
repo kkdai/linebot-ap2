@@ -17,6 +17,11 @@ from .payment import (
     OTPData,
     Transaction,
     RefundRequest,
+    # Credential Provider models
+    CredentialStatus,
+    PaymentCredential,
+    TokenType,
+    PaymentToken,
 )
 from .product import Product, ProductCategory, ShoppingCart
 from .agent import AgentResponse, IntentResult
@@ -44,6 +49,11 @@ __all__ = [
     "OTPData",
     "Transaction",
     "RefundRequest",
+    # Credential Provider
+    "CredentialStatus",
+    "PaymentCredential",
+    "TokenType",
+    "PaymentToken",
     # Product
     "Product",
     "ProductCategory",
