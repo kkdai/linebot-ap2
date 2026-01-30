@@ -444,10 +444,15 @@ class MandateService:
         user_id: str,
         items: List[Dict[str, Any]],
         currency: str = "USD",
-        expires_in_minutes: int = 30
+        expires_in_minutes: int = 30,
+        merchant_id: str = "demo_merchant",
+        merchant_name: str = "Demo Store"
     ) -> Dict[str, Any]:
-        """Create and sign mandate in one operation."""
-        
+        """
+        Create and sign mandate in one operation.
+        Per AP2 spec: Merchant signs first, then mandate is ready for user confirmation.
+        """
+
         # Create mandate
         mandate = self.create_cart_mandate(
             user_id=user_id,
@@ -455,12 +460,31 @@ class MandateService:
             currency=currency,
             expires_in_minutes=expires_in_minutes
         )
-        
-        # Sign mandate
+
+        # Merchant signs first (AP2 Spec Step 10)
+        mandate = self.merchant_sign_mandate(
+            mandate=mandate,
+            merchant_id=merchant_id,
+            merchant_name=merchant_name
+        )
+
+        # Create system signature (for verification)
         signature = self.sign_mandate(mandate)
-        
+
         # Return detailed mandate info
-        return self.get_mandate_details(mandate.mandate_id)
+        details = self.get_mandate_details(mandate.mandate_id)
+
+        # Add AP2 signature info
+        details["ap2_signatures"] = {
+            "merchant_signed": mandate.is_merchant_signed(),
+            "merchant_signed_at": mandate.merchant_signed_at.isoformat() if mandate.merchant_signed_at else None,
+            "user_signed": mandate.is_user_signed(),
+            "user_signed_at": mandate.user_signed_at.isoformat() if mandate.user_signed_at else None,
+            "fully_signed": mandate.is_fully_signed(),
+            "awaiting": "user_signature" if not mandate.is_user_signed() else "none"
+        }
+
+        return details
     
     def cleanup_expired_mandates(self) -> int:
         """Clean up expired mandates. Returns count of cleaned mandates."""
