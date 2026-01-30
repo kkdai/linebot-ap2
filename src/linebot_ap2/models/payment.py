@@ -111,6 +111,68 @@ class PaymentMethod(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class CredentialStatus(str, Enum):
+    """Status of a payment credential."""
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+    EXPIRED = "expired"
+
+
+class PaymentCredential(BaseModel):
+    """
+    Encrypted payment credential managed by Credential Provider.
+    Per AP2 Specification Section 3.1.
+    """
+    credential_id: str
+    user_id: str
+    type: PaymentMethodType
+
+    # Display info (non-sensitive)
+    last_four: str
+    brand: str
+    nickname: Optional[str] = None
+
+    # Encrypted sensitive data (card number, etc.)
+    encrypted_data: Optional[str] = None
+
+    # User preferences
+    is_default: bool = False
+    priority: int = 0  # Higher = preferred
+
+    # Transaction limits
+    supported_currencies: List[str] = Field(default_factory=lambda: ["USD", "TWD"])
+    max_transaction_amount: Optional[float] = None
+    min_transaction_amount: float = 0.0
+
+    # Status and validity
+    status: CredentialStatus = CredentialStatus.ACTIVE
+    created_at: datetime = Field(default_factory=datetime.now)
+    expires_at: Optional[datetime] = None
+
+    # Metadata
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    def is_valid(self) -> bool:
+        """Check if credential is valid for use."""
+        if self.status != CredentialStatus.ACTIVE:
+            return False
+        if self.expires_at and datetime.now() > self.expires_at:
+            return False
+        return True
+
+    def supports_transaction(self, amount: float, currency: str) -> bool:
+        """Check if credential supports the transaction."""
+        if not self.is_valid():
+            return False
+        if currency not in self.supported_currencies:
+            return False
+        if amount < self.min_transaction_amount:
+            return False
+        if self.max_transaction_amount and amount > self.max_transaction_amount:
+            return False
+        return True
+
+
 class CartItem(BaseModel):
     """Cart item model."""
     product_id: str
