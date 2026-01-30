@@ -35,6 +35,7 @@ class MandateService:
         self.secret_key = secret_key
         self.active_mandates: Dict[str, CartMandate] = {}
         self.mandate_signatures: Dict[str, MandateSignature] = {}
+        self.payment_mandates: Dict[str, PaymentMandate] = {}
         self.logger = setup_logger("mandate_service")
     
     def create_cart_mandate(
@@ -249,6 +250,74 @@ class MandateService:
 
         self.logger.info(f"✓ User signed mandate {mandate_id}")
         return mandate
+
+    def create_payment_mandate(
+        self,
+        cart_mandate: CartMandate,
+        payment_method_name: str = "CARD",
+        payment_token: Optional[str] = None
+    ) -> PaymentMandate:
+        """
+        Create PaymentMandate for network/issuer visibility.
+        Per AP2 Specification Section 4.1.3.
+
+        This is created when payment is being processed.
+        """
+        self.logger.info(f"Creating PaymentMandate for cart: {cart_mandate.mandate_id}")
+
+        payment_mandate_id = f"pm_{uuid.uuid4().hex[:12]}"
+
+        # Create payment mandate contents
+        contents = PaymentMandateContents(
+            payment_mandate_id=payment_mandate_id,
+            payment_details_id=cart_mandate.mandate_id,
+            payment_details_total={
+                "label": "Total",
+                "amount": {
+                    "currency": cart_mandate.currency,
+                    "value": cart_mandate.total_amount
+                },
+                "refund_period": 30  # days
+            },
+            payment_response={
+                "request_id": cart_mandate.mandate_id,
+                "method_name": payment_method_name,
+                "details": {
+                    "token": payment_token or cart_mandate.payment_method_token
+                },
+                "shipping_address": cart_mandate.shipping_address,
+                "payer_name": cart_mandate.payer_info.user_id if cart_mandate.payer_info else None,
+                "payer_email": cart_mandate.payer_info.email if cart_mandate.payer_info else None,
+            },
+            merchant_agent="MerchantAgent"
+        )
+
+        # Create payment mandate
+        payment_mandate = PaymentMandate(
+            payment_mandate_id=payment_mandate_id,
+            cart_mandate_id=cart_mandate.mandate_id,
+            agent_presence=True,
+            transaction_modality=TransactionModality.HUMAN_PRESENT,
+            payment_mandate_contents=contents,
+            user_authorization=cart_mandate.user_signature
+        )
+
+        # Store payment mandate
+        self.payment_mandates[payment_mandate_id] = payment_mandate
+
+        self.logger.info(f"✓ PaymentMandate created: {payment_mandate_id}")
+        return payment_mandate
+
+    def get_payment_mandate(self, payment_mandate_id: str) -> Optional[PaymentMandate]:
+        """Get payment mandate by ID."""
+        return self.payment_mandates.get(payment_mandate_id)
+
+    def get_payment_mandate_by_cart(self, cart_mandate_id: str) -> Optional[PaymentMandate]:
+        """Get payment mandate by cart mandate ID."""
+        for pm in self.payment_mandates.values():
+            if pm.cart_mandate_id == cart_mandate_id:
+                return pm
+        return None
 
     def verify_mandate_signature(
         self, 
