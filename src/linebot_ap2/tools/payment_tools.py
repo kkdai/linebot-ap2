@@ -150,6 +150,13 @@ def enhanced_initiate_payment(
             amount=amount
         )
         
+        # User signs the mandate when initiating payment (AP2 Spec Step 21)
+        try:
+            _mandate_service.user_sign_mandate(mandate_id, user_id)
+            _logger.info(f"User signed mandate {mandate_id}")
+        except Exception as e:
+            _logger.warning(f"User signing failed (non-critical): {e}")
+
         # Update mandate status
         _mandate_service.update_mandate_status(mandate_id, "pending_otp")
 
