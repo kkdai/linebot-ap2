@@ -397,13 +397,13 @@ class MandateService:
     
     def get_mandate_details(self, mandate_id: str) -> Dict[str, Any]:
         """Get detailed mandate information for AP2 protocol."""
-        
+
         mandate = self.get_mandate(mandate_id)
         if not mandate:
             return {"error": "Mandate not found"}
-        
+
         signature = self.mandate_signatures.get(mandate_id)
-        
+
         return {
             "mandate": {
                 "id": mandate.mandate_id,
@@ -423,17 +423,26 @@ class MandateService:
                         "subtotal": item.subtotal
                     }
                     for item in mandate.items
-                ]
+                ],
+                # AP2 new fields
+                "payer_info": mandate.payer_info.dict() if mandate.payer_info else None,
+                "payee_info": mandate.payee_info.dict() if mandate.payee_info else None,
+                "payment_method_token": mandate.payment_method_token,
+                "shipping_address": mandate.shipping_address,
             },
-            "signature": {
-                "signature": signature.signature if signature else None,
+            "signatures": {
+                "merchant_signature": mandate.merchant_signature,
+                "merchant_signed_at": mandate.merchant_signed_at.isoformat() if mandate.merchant_signed_at else None,
+                "user_signature": mandate.user_signature,
+                "user_signed_at": mandate.user_signed_at.isoformat() if mandate.user_signed_at else None,
+                "system_signature": signature.signature if signature else None,
                 "algorithm": signature.algorithm if signature else None,
-                "timestamp": signature.timestamp if signature else None,
-                "nonce": signature.nonce if signature else None
-            } if signature else None,
+            },
             "ap2_compliance": {
-                "version": "1.0",
-                "signed": signature is not None,
+                "version": "0.1",
+                "merchant_signed": mandate.is_merchant_signed(),
+                "user_signed": mandate.is_user_signed(),
+                "fully_signed": mandate.is_fully_signed(),
                 "valid": self.is_mandate_valid(mandate_id),
                 "verification_method": "HMAC-SHA256"
             }
