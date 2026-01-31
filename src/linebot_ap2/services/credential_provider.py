@@ -380,3 +380,61 @@ class CredentialProviderService:
     def get_token(self, token_id: str) -> Optional[PaymentToken]:
         """Get token by ID."""
         return self._tokens.get(token_id)
+
+    def get_credential_for_display(self, credential_id: str) -> Optional[Dict[str, Any]]:
+        """Get credential info safe for display (no sensitive data)."""
+        credential = self._credentials.get(credential_id)
+        if not credential:
+            return None
+
+        return {
+            "credential_id": credential.credential_id,
+            "type": credential.type.value,
+            "brand": credential.brand,
+            "last_four": credential.last_four,
+            "nickname": credential.nickname,
+            "is_default": credential.is_default,
+            "status": credential.status.value,
+            "supported_currencies": credential.supported_currencies,
+            "max_transaction_amount": credential.max_transaction_amount
+        }
+
+    def get_user_credentials_for_display(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get all user credentials safe for display."""
+        credentials = self.get_user_credentials(user_id)
+        return [
+            self.get_credential_for_display(c.credential_id)
+            for c in credentials
+            if c.is_valid()
+        ]
+
+    def set_default_credential(self, user_id: str, credential_id: str) -> bool:
+        """Set a credential as default for user."""
+        credential = self._credentials.get(credential_id)
+        if not credential or credential.user_id != user_id:
+            return False
+
+        # Unset other defaults
+        for cred_id in self._user_credentials.get(user_id, []):
+            if cred_id in self._credentials:
+                self._credentials[cred_id].is_default = False
+
+        # Set new default
+        credential.is_default = True
+        self.logger.info(f"✓ Set default credential: {credential_id} for user {user_id}")
+        return True
+
+    def cleanup_expired_tokens(self) -> int:
+        """Clean up expired tokens. Returns count of cleaned tokens."""
+        expired = [
+            token_id for token_id, token in self._tokens.items()
+            if not token.is_valid()
+        ]
+
+        for token_id in expired:
+            del self._tokens[token_id]
+
+        if expired:
+            self.logger.info(f"Cleaned up {len(expired)} expired tokens")
+
+        return len(expired)
