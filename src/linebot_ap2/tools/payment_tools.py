@@ -3,7 +3,7 @@
 import json
 from typing import Optional
 
-from ..services import get_payment_service, get_mandate_service, get_product_service
+from ..services import get_payment_service, get_mandate_service, get_product_service, get_credential_provider
 from ..services.payment_service import PaymentError, OTPError
 from ..common.logger import setup_logger
 
@@ -11,6 +11,7 @@ from ..common.logger import setup_logger
 _payment_service = get_payment_service()
 _mandate_service = get_mandate_service()
 _product_service = get_product_service()
+_credential_provider = get_credential_provider()
 _logger = setup_logger("payment_tools")
 
 
@@ -186,6 +187,92 @@ def enhanced_initiate_payment(
         })
     except Exception as e:
         _logger.error(f"Unexpected payment error: {str(e)}")
+        return json.dumps({
+            "error": f"Payment initiation failed: {str(e)}",
+            "mandate_id": mandate_id,
+            "status": "failed"
+        })
+
+
+def initiate_payment_with_token(
+    mandate_id: str,
+    token_id: str,
+    user_id: str
+) -> str:
+    """
+    Initiate payment using a pre-issued token.
+    Per AP2 spec: Uses token from Credential Provider for secure payment.
+
+    Args:
+        mandate_id: Cart mandate ID
+        token_id: Payment token from Credential Provider
+        user_id: User identifier
+
+    Returns:
+        JSON string with payment initiation details
+    """
+    try:
+        _logger.info(f"Initiating payment with token: mandate={mandate_id}, token={token_id}")
+
+        # Validate token
+        if not _credential_provider.validate_token(token_id):
+            return json.dumps({
+                "error": "Invalid or expired token",
+                "token_id": token_id,
+                "status": "failed"
+            })
+
+        # Get token info
+        token = _credential_provider.get_token(token_id)
+        if not token or token.mandate_id != mandate_id:
+            return json.dumps({
+                "error": "Token not bound to this mandate",
+                "token_id": token_id,
+                "mandate_id": mandate_id,
+                "status": "failed"
+            })
+
+        # Verify mandate
+        if not _mandate_service.is_mandate_valid(mandate_id):
+            return json.dumps({
+                "error": "Invalid or expired mandate",
+                "mandate_id": mandate_id,
+                "status": "failed"
+            })
+
+        # Get credential info for display
+        cred_display = _credential_provider.get_credential_for_display(token.credential_id)
+
+        # Use existing payment initiation with the credential's payment method ID
+        # This preserves the OTP flow
+        result = _payment_service.initiate_payment(
+            mandate_id=mandate_id,
+            payment_method_id=token.credential_id,  # Use credential_id as payment_method_id
+            user_id=user_id,
+            amount=token.amount
+        )
+
+        # User signs the mandate when initiating payment (AP2 Spec Step 21)
+        try:
+            _mandate_service.user_sign_mandate(mandate_id, user_id)
+            _logger.info(f"User signed mandate {mandate_id}")
+        except Exception as e:
+            _logger.warning(f"User signing failed (non-critical): {e}")
+
+        # Update mandate status
+        _mandate_service.update_mandate_status(mandate_id, "pending_otp")
+
+        # Add token and credential info to result
+        result["token_info"] = {
+            "token_id": token_id,
+            "credential": cred_display
+        }
+
+        _logger.info(f"Payment initiated with token: {token_id}")
+        return json.dumps(result, default=str)
+
+    except Exception as e:
+        _logger.error(f"Token payment error: {str(e)}")
         return json.dumps({
             "error": f"Payment initiation failed: {str(e)}",
             "mandate_id": mandate_id,
