@@ -182,3 +182,94 @@ class CredentialProviderService:
         credential.status = CredentialStatus.SUSPENDED
         self.logger.info(f"✓ Credential deactivated: {credential_id}")
         return True
+
+    def get_eligible_methods(
+        self,
+        user_id: str,
+        amount: float,
+        currency: str,
+        merchant_accepted_types: Optional[List[str]] = None
+    ) -> List[PaymentCredential]:
+        """
+        Get payment credentials eligible for a transaction.
+        Per AP2 spec: Filter based on merchant requirements and transaction context.
+
+        Args:
+            user_id: User identifier
+            amount: Transaction amount
+            currency: Transaction currency
+            merchant_accepted_types: Payment types accepted by merchant
+
+        Returns:
+            List of eligible credentials sorted by priority
+        """
+        credentials = self.get_user_credentials(user_id)
+        eligible = []
+
+        for cred in credentials:
+            # Check if credential supports the transaction
+            if not cred.supports_transaction(amount, currency):
+                continue
+
+            # Check if merchant accepts this type
+            if merchant_accepted_types:
+                if cred.type.value not in merchant_accepted_types:
+                    continue
+
+            eligible.append(cred)
+
+        # Sort by: default first, then priority (descending)
+        eligible.sort(key=lambda c: (not c.is_default, -c.priority))
+
+        self.logger.info(
+            f"Found {len(eligible)} eligible methods for user {user_id} "
+            f"(amount={amount} {currency})"
+        )
+        return eligible
+
+    def select_optimal_method(
+        self,
+        user_id: str,
+        amount: float,
+        currency: str,
+        merchant_accepted_types: Optional[List[str]] = None,
+        preference_hints: Optional[Dict[str, Any]] = None
+    ) -> Optional[PaymentCredential]:
+        """
+        Automatically select the optimal payment method.
+        Per AP2 spec: Select based on user preferences and transaction context.
+
+        Args:
+            user_id: User identifier
+            amount: Transaction amount
+            currency: Transaction currency
+            merchant_accepted_types: Payment types accepted by merchant
+            preference_hints: Additional hints (e.g., {"prefer_rewards": True})
+
+        Returns:
+            Optimal credential or None if none eligible
+        """
+        eligible = self.get_eligible_methods(
+            user_id=user_id,
+            amount=amount,
+            currency=currency,
+            merchant_accepted_types=merchant_accepted_types
+        )
+
+        if not eligible:
+            self.logger.warning(f"No eligible payment methods for user {user_id}")
+            return None
+
+        # Apply preference hints if provided
+        if preference_hints:
+            preferred_brand = preference_hints.get("preferred_brand")
+            if preferred_brand:
+                for cred in eligible:
+                    if cred.brand.lower() == preferred_brand.lower():
+                        self.logger.info(f"Selected {cred.credential_id} based on brand preference")
+                        return cred
+
+        # Return first eligible (already sorted by default/priority)
+        selected = eligible[0]
+        self.logger.info(f"Selected optimal method: {selected.credential_id}")
+        return selected
