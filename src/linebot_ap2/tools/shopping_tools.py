@@ -418,3 +418,79 @@ def get_eligible_payment_methods(
             "user_id": user_id,
             "eligible_methods": []
         })
+
+
+def issue_payment_token_for_mandate(
+    user_id: str,
+    credential_id: str,
+    mandate_id: str
+) -> str:
+    """
+    Issue a payment token for a mandate.
+    Per AP2 spec: Token binds credential to specific mandate for secure payment.
+
+    Args:
+        user_id: User identifier
+        credential_id: Selected payment credential
+        mandate_id: Mandate to bind token to
+
+    Returns:
+        JSON string with token info
+    """
+    try:
+        _logger.info(f"Issuing payment token: user={user_id}, credential={credential_id}, mandate={mandate_id}")
+
+        # Get mandate to verify and get amount
+        mandate = _mandate_service.get_mandate(mandate_id)
+        if not mandate:
+            return json.dumps({
+                "error": "Mandate not found",
+                "mandate_id": mandate_id
+            })
+
+        if mandate.user_id != user_id:
+            return json.dumps({
+                "error": "User ID mismatch",
+                "mandate_id": mandate_id
+            })
+
+        # Issue token
+        token = _credential_provider.issue_payment_token(
+            credential_id=credential_id,
+            mandate_id=mandate_id,
+            amount=mandate.total_amount,
+            currency=mandate.currency
+        )
+
+        if not token:
+            return json.dumps({
+                "error": "Failed to issue token. Credential may be invalid or does not support this transaction.",
+                "credential_id": credential_id,
+                "mandate_id": mandate_id
+            })
+
+        # Update mandate with token
+        mandate.payment_method_token = token.token_id
+        _mandate_service.active_mandates[mandate_id] = mandate
+
+        response = {
+            "token_id": token.token_id,
+            "credential_id": credential_id,
+            "mandate_id": mandate_id,
+            "amount": token.amount,
+            "currency": token.currency,
+            "expires_at": token.expires_at.isoformat(),
+            "status": "issued",
+            "message": "Payment token issued successfully. Proceed to payment."
+        }
+
+        _logger.info(f"Token issued: {token.token_id}")
+        return json.dumps(response, default=str)
+
+    except Exception as e:
+        _logger.error(f"Issue token error: {str(e)}")
+        return json.dumps({
+            "error": f"Failed to issue token: {str(e)}",
+            "credential_id": credential_id,
+            "mandate_id": mandate_id
+        })
