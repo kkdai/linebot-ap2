@@ -273,3 +273,110 @@ class CredentialProviderService:
         selected = eligible[0]
         self.logger.info(f"Selected optimal method: {selected.credential_id}")
         return selected
+
+    def issue_payment_token(
+        self,
+        credential_id: str,
+        mandate_id: str,
+        amount: float,
+        currency: str,
+        expires_in_minutes: int = 30
+    ) -> Optional[PaymentToken]:
+        """
+        Issue a one-time payment token for a transaction.
+        Per AP2 spec: Token binds credential to specific mandate.
+
+        Args:
+            credential_id: Credential to tokenize
+            mandate_id: Mandate this token is for
+            amount: Transaction amount
+            currency: Transaction currency
+            expires_in_minutes: Token validity period
+
+        Returns:
+            PaymentToken or None if credential invalid
+        """
+        credential = self._credentials.get(credential_id)
+        if not credential:
+            self.logger.error(f"Credential not found: {credential_id}")
+            return None
+
+        if not credential.supports_transaction(amount, currency):
+            self.logger.error(f"Credential {credential_id} does not support transaction")
+            return None
+
+        # Generate secure token
+        token_id = f"tok_{uuid.uuid4().hex[:12]}"
+        token_value = secrets.token_urlsafe(32)
+
+        token = PaymentToken(
+            token_id=token_id,
+            credential_id=credential_id,
+            user_id=credential.user_id,
+            mandate_id=mandate_id,
+            token_value=token_value,
+            token_type=TokenType.SINGLE_USE,
+            amount=amount,
+            currency=currency,
+            expires_at=datetime.now() + timedelta(minutes=expires_in_minutes)
+        )
+
+        # Store token
+        self._tokens[token_id] = token
+
+        self.logger.info(f"✓ Token issued: {token_id} for mandate {mandate_id}")
+        return token
+
+    def validate_token(self, token_id: str) -> bool:
+        """Validate a payment token."""
+        token = self._tokens.get(token_id)
+        if not token:
+            return False
+        return token.is_valid()
+
+    def consume_token(self, token_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Consume a token and return credential info for payment processing.
+
+        Returns:
+            Dict with credential info or None if token invalid
+        """
+        token = self._tokens.get(token_id)
+        if not token:
+            self.logger.error(f"Token not found: {token_id}")
+            return None
+
+        if not token.is_valid():
+            self.logger.error(f"Token invalid or expired: {token_id}")
+            return None
+
+        credential = self._credentials.get(token.credential_id)
+        if not credential:
+            self.logger.error(f"Credential not found for token: {token_id}")
+            return None
+
+        # Mark token as used
+        token.consume()
+
+        # Decrypt credential data for payment processing
+        import json
+        decrypted_data = json.loads(self._decrypt(credential.encrypted_data))
+
+        self.logger.info(f"✓ Token consumed: {token_id}")
+
+        return {
+            "credential_id": credential.credential_id,
+            "type": credential.type.value,
+            "brand": credential.brand,
+            "last_four": credential.last_four,
+            "token_id": token_id,
+            "mandate_id": token.mandate_id,
+            "amount": token.amount,
+            "currency": token.currency,
+            # Sensitive data for payment processor
+            "_credential_data": decrypted_data
+        }
+
+    def get_token(self, token_id: str) -> Optional[PaymentToken]:
+        """Get token by ID."""
+        return self._tokens.get(token_id)
