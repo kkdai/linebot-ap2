@@ -164,7 +164,8 @@ def enhanced_initiate_payment(
         # Add mandate context
         result["mandate_info"] = {
             "mandate_id": mandate_id,
-            "signed": mandate_details["ap2_compliance"]["signed"],
+            "merchant_signed": mandate_details["ap2_compliance"]["merchant_signed"],
+            "user_signed": mandate_details["ap2_compliance"]["user_signed"],
             "expires_at": mandate_details["mandate"]["expires_at"]
         }
 
