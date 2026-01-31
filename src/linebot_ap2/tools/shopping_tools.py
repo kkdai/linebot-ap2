@@ -3,13 +3,14 @@
 import json
 from typing import Optional
 
-from ..services import get_product_service, get_mandate_service
+from ..services import get_product_service, get_mandate_service, get_credential_provider
 from ..models.product import ProductCategory
 from ..common.logger import setup_logger
 
 # Use shared service instances to ensure data consistency across agents
 _product_service = get_product_service()
 _mandate_service = get_mandate_service()
+_credential_provider = get_credential_provider()
 _logger = setup_logger("shopping_tools")
 
 
@@ -346,4 +347,74 @@ def get_user_mandates(user_id: str) -> str:
             "error": f"Failed to get user mandates: {str(e)}",
             "user_id": user_id,
             "active_mandates": []
+        })
+
+
+def get_eligible_payment_methods(
+    user_id: str,
+    amount: float,
+    currency: str = "USD",
+    merchant_accepted_types: str = ""
+) -> str:
+    """
+    Get eligible payment methods for a transaction.
+    Per AP2 spec: Credential Provider returns methods matching transaction context.
+
+    Args:
+        user_id: User identifier
+        amount: Transaction amount
+        currency: Transaction currency (default: USD)
+        merchant_accepted_types: Comma-separated list of accepted types (e.g., "card,wallet")
+
+    Returns:
+        JSON string with eligible payment methods
+    """
+    try:
+        _logger.info(f"Getting eligible payment methods for user {user_id}, amount={amount} {currency}")
+
+        accepted_types = None
+        if merchant_accepted_types:
+            accepted_types = [t.strip() for t in merchant_accepted_types.split(",")]
+
+        eligible = _credential_provider.get_eligible_methods(
+            user_id=user_id,
+            amount=amount,
+            currency=currency,
+            merchant_accepted_types=accepted_types
+        )
+
+        # Get display-safe info
+        methods = []
+        for cred in eligible:
+            methods.append({
+                "credential_id": cred.credential_id,
+                "type": cred.type.value,
+                "brand": cred.brand,
+                "last_four": cred.last_four,
+                "nickname": cred.nickname,
+                "is_default": cred.is_default
+            })
+
+        response = {
+            "user_id": user_id,
+            "eligible_methods": methods,
+            "total": len(methods),
+            "transaction_context": {
+                "amount": amount,
+                "currency": currency
+            }
+        }
+
+        if not methods:
+            response["message"] = "No eligible payment methods found. Please add a payment method."
+
+        _logger.info(f"Found {len(methods)} eligible methods")
+        return json.dumps(response, default=str)
+
+    except Exception as e:
+        _logger.error(f"Get eligible methods error: {str(e)}")
+        return json.dumps({
+            "error": f"Failed to get eligible methods: {str(e)}",
+            "user_id": user_id,
+            "eligible_methods": []
         })
